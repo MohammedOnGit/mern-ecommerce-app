@@ -1,3 +1,5 @@
+
+
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
@@ -12,15 +14,19 @@ const initialState = {
   lastUpdated: null
 };
 
-export const fetchCartItems  = createAsyncThunk(
+export const fetchCartItems = createAsyncThunk(
   'cart/fetchCartItems',
   async (userId, { rejectWithValue }) => {
     try {
+      // Get token from localStorage for backup
+      const token = localStorage.getItem('token');
+      
       const response = await axios.get(
         `${API_BASE_URL}/shop/cart/get/${userId}`,
         { 
           withCredentials: true,
-          timeout: 10000
+          timeout: 10000,
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         }
       );
       
@@ -30,6 +36,10 @@ export const fetchCartItems  = createAsyncThunk(
         return rejectWithValue(response.data.message || "Failed to fetch cart");
       }
     } catch (error) {
+      if (error.response?.status === 401) {
+        // Auth error - don't clear cart, just return empty
+        return { items: [], cartCount: 0, subtotal: 0 };
+      }
       if (error.response?.status === 429) {
         return rejectWithValue("Rate limited. Please try again in a moment.");
       }
@@ -40,14 +50,18 @@ export const fetchCartItems  = createAsyncThunk(
 
 export const addToCart = createAsyncThunk(
   'cart/addToCart',
-  async ({ userId, productId, quantity = 1 }, { rejectWithValue }) => {
+  async ({ userId, productId, quantity = 1 }, { rejectWithValue, getState }) => {
     try {
+      // Get token from localStorage for auth persistence
+      const token = localStorage.getItem('token');
+      
       const response = await axios.post(
         `${API_BASE_URL}/shop/cart/add`,
         { userId, productId, quantity },
         { 
           withCredentials: true,
-          timeout: 8000
+          timeout: 8000,
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         }
       );
       
@@ -57,6 +71,26 @@ export const addToCart = createAsyncThunk(
         return rejectWithValue(response.data.message || "Failed to add to cart");
       }
     } catch (error) {
+      if (error.response?.status === 401) {
+        // Auth error - don't reject, use optimistic update
+        const state = getState();
+        const product = state.shopProducts?.products?.find(p => p._id === productId) || {};
+        
+        // Return optimistic data
+        return {
+          items: [...state.cart.items, {
+            productId: productId,
+            image: product.image || '',
+            title: product.title || 'Product',
+            price: product.price || 0,
+            salePrice: product.salePrice,
+            quantity: quantity,
+            _id: `temp-${Date.now()}`
+          }],
+          cartCount: state.cart.cartCount + quantity,
+          subtotal: state.cart.subtotal + (product.salePrice || product.price || 0) * quantity
+        };
+      }
       if (error.response?.status === 429) {
         return rejectWithValue("Rate limited. Please try again in a moment.");
       }
@@ -69,12 +103,15 @@ export const updateCartQuantity = createAsyncThunk(
   'cart/updateQuantity',
   async ({ userId, productId, quantity }, { rejectWithValue }) => {
     try {
+      const token = localStorage.getItem('token');
+      
       const response = await axios.put(
         `${API_BASE_URL}/shop/cart/update`,
         { userId, productId, quantity },
         { 
           withCredentials: true,
-          timeout: 8000
+          timeout: 8000,
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         }
       );
       
@@ -94,13 +131,16 @@ export const updateCartQuantity = createAsyncThunk(
 
 export const deleteCartItem = createAsyncThunk(
   'cart/deleteItem',
-  async ({ userId, productId }, { rejectWithValue }) => {
+  async ({ userId, productId }, { rejectWithValue, getState }) => {
     try {
+      const token = localStorage.getItem('token');
+      
       const response = await axios.delete(
         `${API_BASE_URL}/shop/cart/${userId}/${productId}`,
         { 
           withCredentials: true,
-          timeout: 8000
+          timeout: 8000,
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
         }
       );
       
@@ -110,6 +150,20 @@ export const deleteCartItem = createAsyncThunk(
         return rejectWithValue(response.data.message || "Failed to delete item");
       }
     } catch (error) {
+      if (error.response?.status === 401) {
+        // Auth error - still remove item optimistically
+        const state = getState();
+        const item = state.cart.items.find(i => i.productId === productId);
+        
+        if (item) {
+          return {
+            productId,
+            items: state.cart.items.filter(i => i.productId !== productId),
+            cartCount: state.cart.cartCount - item.quantity,
+            subtotal: state.cart.subtotal - (item.salePrice || item.price || 0) * item.quantity
+          };
+        }
+      }
       if (error.response?.status === 429) {
         return rejectWithValue("Rate limited. Please try again in a moment.");
       }
@@ -134,11 +188,13 @@ const cartSlice = createSlice({
   initialState,
   reducers: {
     clearCart: (state) => {
+      // Only clear cart data, preserve other state
       state.items = [];
       state.cartCount = 0;
       state.subtotal = 0;
       state.error = null;
       state.lastUpdated = new Date().toISOString();
+      // ⚠️ Auth data remains in localStorage and auth slice
     },
     updateCartCount: (state, action) => {
       state.cartCount = action.payload;
@@ -219,15 +275,50 @@ const cartSlice = createSlice({
         return sum + (price * item.quantity);
       }, 0);
       state.lastUpdated = new Date().toISOString();
+    },
+    restoreCartFromStorage: (state) => {
+      // Try to restore cart from localStorage if auth is valid
+      try {
+        const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        
+        if (token && user.id) {
+          const savedCart = localStorage.getItem('cart_backup');
+          if (savedCart) {
+            const parsed = JSON.parse(savedCart);
+            state.items = parsed.items || [];
+            state.cartCount = parsed.cartCount || 0;
+            state.subtotal = parsed.subtotal || 0;
+            state.lastUpdated = parsed.lastUpdated || new Date().toISOString();
+            console.log('🛒 Cart restored from localStorage backup');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to restore cart from storage:', error);
+      }
+    },
+    saveCartToStorage: (state) => {
+      // Save cart to localStorage as backup
+      try {
+        const cartBackup = {
+          items: state.items,
+          cartCount: state.cartCount,
+          subtotal: state.subtotal,
+          lastUpdated: state.lastUpdated
+        };
+        localStorage.setItem('cart_backup', JSON.stringify(cartBackup));
+      } catch (error) {
+        console.warn('Failed to save cart to storage:', error);
+      }
     }
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchCartItems .pending, (state) => {
+      .addCase(fetchCartItems.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(fetchCartItems .fulfilled, (state, action) => {
+      .addCase(fetchCartItems.fulfilled, (state, action) => {
         state.isLoading = false;
         state.items = action.payload.items || [];
         state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -237,10 +328,28 @@ const cartSlice = createSlice({
         }, 0);
         state.lastUpdated = new Date().toISOString();
         state.error = null;
+        
+        // Save cart to localStorage after successful fetch
+        try {
+          const cartBackup = {
+            items: state.items,
+            cartCount: state.cartCount,
+            subtotal: state.subtotal,
+            lastUpdated: state.lastUpdated
+          };
+          localStorage.setItem('cart_backup', JSON.stringify(cartBackup));
+        } catch (error) {
+          console.warn('Failed to save cart backup:', error);
+        }
       })
-      .addCase(fetchCartItems .rejected, (state, action) => {
+      .addCase(fetchCartItems.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload;
+        // Don't clear cart on auth errors
+        if (action.payload?.includes('401') || action.payload?.includes('auth')) {
+          state.error = "Please log in to view your cart";
+        } else {
+          state.error = action.payload;
+        }
       })
       
       .addCase(addToCart.pending, (state) => {
@@ -249,9 +358,9 @@ const cartSlice = createSlice({
       })
       .addCase(addToCart.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.items = action.payload.items || [];
-        state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-        state.subtotal = state.items.reduce((sum, item) => {
+        state.items = action.payload.items || state.items;
+        state.cartCount = action.payload.cartCount || state.items.reduce((sum, item) => sum + item.quantity, 0);
+        state.subtotal = action.payload.subtotal || state.items.reduce((sum, item) => {
           const price = item.salePrice || item.price || 0;
           return sum + (price * item.quantity);
         }, 0);
@@ -289,12 +398,19 @@ const cartSlice = createSlice({
       })
       .addCase(deleteCartItem.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.items = state.items.filter(item => item.productId !== action.payload.productId);
-        state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-        state.subtotal = state.items.reduce((sum, item) => {
-          const price = item.salePrice || item.price || 0;
-          return sum + (price * item.quantity);
-        }, 0);
+        // Handle both optimistic and actual responses
+        if (action.payload.items) {
+          state.items = action.payload.items;
+          state.cartCount = action.payload.cartCount || 0;
+          state.subtotal = action.payload.subtotal || 0;
+        } else {
+          state.items = state.items.filter(item => item.productId !== action.payload.productId);
+          state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
+          state.subtotal = state.items.reduce((sum, item) => {
+            const price = item.salePrice || item.price || 0;
+            return sum + (price * item.quantity);
+          }, 0);
+        }
         state.lastUpdated = new Date().toISOString();
         state.error = null;
       })
@@ -337,8 +453,33 @@ const cartSlice = createSlice({
         state.error = action.payload;
       })
       
+      // Handle clearAllUserData action - ONLY clear cart data, not entire state
       .addCase('clear/clearAllUserData', (state) => {
-        return { ...initialState };
+        // Only reset cart-specific properties
+        state.items = [];
+        state.cartCount = 0;
+        state.subtotal = 0;
+        state.error = null;
+        state.lastUpdated = new Date().toISOString();
+        // Keep isLoading state to prevent UI flickering
+        // ⚠️ Auth data remains untouched
+      })
+      
+      // Add auth status change listeners
+      .addCase('auth/checkAuthStatus/fulfilled', (state, action) => {
+        // When auth is restored, optionally restore cart
+        if (action.payload.user?.id) {
+          // Cart will be fetched automatically by components
+          console.log('🛒 Auth restored, cart can be fetched');
+        }
+      })
+      .addCase('auth/logoutUser/fulfilled', (state) => {
+        // Only clear cart on explicit logout
+        state.items = [];
+        state.cartCount = 0;
+        state.subtotal = 0;
+        state.error = null;
+        state.lastUpdated = new Date().toISOString();
       });
   }
 });
@@ -351,7 +492,9 @@ export const {
   removeOptimisticCartItem,
   clearCartError,
   syncCartItems,
-  addCartItemDirectly
+  addCartItemDirectly,
+  restoreCartFromStorage,  // NEW
+  saveCartToStorage        // NEW
 } = cartSlice.actions;
 
 export default cartSlice.reducer;
