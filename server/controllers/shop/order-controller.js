@@ -1,20 +1,45 @@
-// controllers/shop/order-controller.js - COMPLETE FIXED VERSION
 const Order = require('../../models/Order');
 const Cart = require('../../models/Cart');
 const paystack = require('../../helpers/paystack');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken'); 
 
 const createOrder = async (req, res) => {
-  try {
-    console.log('🛒 Creating order with data:', {
-      userId: req.body.userId,
-      cartItemsCount: req.body.cartItems?.length,
-      totalAmount: req.body.totalAmount,
-      customerEmail: req.body.customerEmail
-    });
-    
-    const { userId, cartItems, addressInfo, totalAmount, customerEmail } = req.body;
+  console.log("🛒 CREATE ORDER REQUEST RECEIVED");
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body, null, 2));
+  
+  const startTime = Date.now();
+  const requestId = crypto.randomBytes(8).toString('hex');
+  
+  console.log(`[${requestId}] 🛒 Starting order creation`, {
+    userId: req.body.userId,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
 
-    // Enhanced validation with specific error messages
+  try {
+    const {
+      userId,
+      cartItems,
+      addressInfo,
+      totalAmount,
+      customerEmail,
+      subtotal = 0,
+      shippingFee = 0,
+      tax = 0,
+      notes = ''
+    } = req.body;
+
+    console.log(`[${requestId}] Received data:`, {
+      userId,
+      cartItemsCount: cartItems?.length,
+      totalAmount,
+      customerEmail,
+      hasAddress: !!addressInfo
+    });
+
+    // Basic validation
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -54,52 +79,138 @@ const createOrder = async (req, res) => {
       }
     }
 
-    const newOrder = new Order({
-      userId,
-      cartItems: cartItems.map(item => ({
+    // Calculate totals for verification - USE PRECISE CALCULATION
+    let calculatedSubtotal = 0;
+    const processedCartItems = cartItems.map(item => {
+      const price = parseFloat(Number(item.price).toFixed(2));
+      const quantity = parseInt(item.quantity) || 1;
+      const itemTotal = parseFloat((price * quantity).toFixed(2));
+      calculatedSubtotal = parseFloat((calculatedSubtotal + itemTotal).toFixed(2));
+      
+      return {
         productId: item.productId,
         title: item.title,
         image: item.image || '',
-        price: Number(item.price),
-        salePrice: item.salePrice ? Number(item.salePrice) : undefined,
-        quantity: Number(item.quantity)
-      })),
+        price: price,
+        quantity: quantity,
+        productTotal: itemTotal
+      };
+    });
+    
+    calculatedSubtotal = parseFloat(calculatedSubtotal.toFixed(2));
+    const calculatedShippingFee = parseFloat(Number(shippingFee).toFixed(2));
+    const calculatedTax = parseFloat(Number(tax).toFixed(2));
+    const calculatedTotal = parseFloat((calculatedSubtotal + calculatedShippingFee + calculatedTax).toFixed(2));
+    
+    const frontendTotal = parseFloat(Number(totalAmount).toFixed(2));
+    const frontendSubtotal = parseFloat(Number(subtotal).toFixed(2)) || calculatedSubtotal;
+    
+    console.log(`[${requestId}] 💰 Total Calculation:`, {
+      backend: {
+        subtotal: calculatedSubtotal,
+        shipping: calculatedShippingFee,
+        tax: calculatedTax,
+        total: calculatedTotal
+      },
+      frontend: {
+        subtotal: frontendSubtotal,
+        shipping: calculatedShippingFee,
+        tax: calculatedTax,
+        total: frontendTotal
+      },
+      cartItems: processedCartItems.map(item => ({
+        price: item.price,
+        quantity: item.quantity,
+        total: item.productTotal
+      }))
+    });
+
+    // FIXED: Use larger tolerance - 1 GHC or 5%
+    const amountTolerance = Math.max(1.00, calculatedTotal * 0.05); // 5% or 1 GHC, whichever is larger
+    
+    if (Math.abs(calculatedTotal - frontendTotal) > amountTolerance) {
+      console.warn(`[${requestId}] Amount mismatch`, {
+        calculated: calculatedTotal,
+        provided: frontendTotal,
+        difference: Math.abs(calculatedTotal - frontendTotal),
+        tolerance: amountTolerance
+      });
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Order total does not match calculated amount',
+        calculatedTotal: calculatedTotal,
+        providedTotal: frontendTotal,
+        difference: Math.abs(calculatedTotal - frontendTotal),
+        tolerance: amountTolerance,
+        requestId
+      });
+    }
+
+    // Use frontend's totals since they're within tolerance
+    const finalTotal = frontendTotal;
+    const finalSubtotal = frontendSubtotal;
+    
+    console.log(`[${requestId}] ✅ Totals accepted. Using:`, {
+      total: finalTotal,
+      subtotal: finalSubtotal,
+      shipping: calculatedShippingFee,
+      tax: calculatedTax
+    });
+
+    // Create order
+    const newOrder = new Order({
+      userId,
+      cartItems: processedCartItems,
       addressInfo: addressInfo || {},
       orderStatus: 'pending',
       paymentMethod: 'paystack',
       paymentStatus: 'pending',
-      totalAmount: Number(totalAmount),
+      subtotal: finalSubtotal,
+      shippingFee: calculatedShippingFee,
+      tax: calculatedTax,
+      totalAmount: finalTotal,
+      customerEmail,
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent'),
       orderDate: new Date(),
       orderUpdateDate: new Date()
     });
 
     const savedOrder = await newOrder.save();
-    console.log('✅ Order saved:', savedOrder._id);
+    console.log(`[${requestId}] ✅ Order saved:`, savedOrder._id);
 
-    const amountInKobo = Math.round(savedOrder.totalAmount * 100);
+    // Generate unique reference
     const transactionReference = `ORDER_${savedOrder._id}_${Date.now()}`;
     
-    const backendBaseUrl = process.env.BACKEND_BASE_URL || 'http://localhost:5000';
-
+    // Prepare Paystack payload with improved callback URL
     const paystackData = {
       email: customerEmail,
-      amount: amountInKobo,
+      amount: Math.round(savedOrder.totalAmount * 100), // Convert to kobo
       reference: transactionReference,
-      callback_url: `${backendBaseUrl}/api/shop/orders/verify-payment`,
       metadata: {
         orderId: savedOrder._id.toString(),
         userId: userId,
-        cartCount: cartItems.length
-      }
+        itemsCount: cartItems.length,
+        customerEmail: customerEmail
+      },
+      callback_url: `${process.env.BACKEND_BASE_URL || 'http://localhost:5000'}/api/shop/orders/verify-payment`
     };
 
-    console.log('🔗 Initializing Paystack payment with data:', paystackData);
+    console.log(`[${requestId}] 🔗 Initializing Paystack payment`, {
+      email: customerEmail,
+      amount: savedOrder.totalAmount,
+      reference: transactionReference,
+      callback_url: paystackData.callback_url
+    });
 
+    // Initialize Paystack transaction
     const paystackResponse = await paystack.initializeTransaction(paystackData);
 
     if (!paystackResponse.status) {
-      console.error('❌ Paystack initialization failed:', paystackResponse.message);
+      console.error(`[${requestId}] ❌ Paystack initialization failed:`, paystackResponse.message);
       
+      // Update order with failure
       savedOrder.paymentStatus = 'failed';
       savedOrder.orderUpdateDate = new Date();
       await savedOrder.save();
@@ -107,76 +218,112 @@ const createOrder = async (req, res) => {
       return res.status(500).json({
         success: false,
         message: 'Failed to initialize payment gateway',
-        error: paystackResponse.message
+        error: paystackResponse.message,
+        requestId
       });
     }
 
+    // Update order with payment reference
     savedOrder.paymentId = transactionReference;
     savedOrder.orderUpdateDate = new Date();
     await savedOrder.save();
 
-    console.log('🔗 Paystack payment link generated for order:', savedOrder._id);
+    const responseTime = Date.now() - startTime;
+    console.log(`[${requestId}] ✅ Payment initialized in ${responseTime}ms`);
 
+    // Return success response
     res.status(201).json({
       success: true,
-      message: 'Order created. Redirect to payment.',
+      message: 'Order created successfully',
       orderId: savedOrder._id,
-      authorization_url: paystackResponse.data.authorization_url
+      authorization_url: paystackResponse.data.authorization_url,
+      data: {
+        orderId: savedOrder._id,
+        orderNumber: transactionReference,
+        totalAmount: savedOrder.totalAmount,
+        payment: {
+          authorization_url: paystackResponse.data.authorization_url,
+          reference: transactionReference
+        }
+      },
+      requestId
     });
 
   } catch (error) {
-    console.error('❌ Create Order Error:', error);
-    
+    const responseTime = Date.now() - startTime;
+    console.error(`[${requestId}] ❌ Create Order Error (${responseTime}ms):`, {
+      message: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: Object.values(error.errors).map(err => err.message)
+        message: 'Order validation failed',
+        errors: Object.values(error.errors).map(err => err.message),
+        requestId
       });
     }
 
+    if (error.name === 'MongoError' && error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Duplicate order detected',
+        requestId
+      });
+    }
+
+    // Generic error response
     res.status(500).json({
       success: false,
-      message: 'Internal server error creating order',
-      error: error.message
+      message: 'Internal server error while creating order',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred',
+      requestId,
+      responseTime: `${responseTime}ms`
     });
   }
 };
 
 const verifyPayment = async (req, res) => {
+  console.log('🔍 Verifying payment for reference:', req.query.reference);
+  
+  const startTime = Date.now();
+  const requestId = crypto.randomBytes(8).toString('hex');
+  
   try {
-    const { reference } = req.query;
-    
-    console.log('🔍 Verifying payment for reference:', reference);
+    const reference = req.query.reference || req.query.trxref;
     
     if (!reference) {
-      console.warn('No reference provided in callback');
+      console.warn(`[${requestId}] No reference provided in callback`);
       return res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/payment-failed?error=no_reference`);
     }
 
+    // Verify transaction with Paystack
     const verification = await paystack.verifyTransaction(reference);
     
     if (!verification.status || verification.data.status !== 'success') {
-      console.error('Paystack verification failed:', verification.message);
+      console.error(`[${requestId}] Paystack verification failed:`, verification.message);
       return res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/payment-failed?error=verification_failed`);
     }
 
     const order = await Order.findOne({ paymentId: reference });
     if (!order) {
-      console.error('Order not found for reference:', reference);
+      console.error(`[${requestId}] Order not found for reference:`, reference);
       return res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/payment-failed?error=order_not_found`);
     }
 
     const amountPaid = verification.data.amount / 100;
     if (amountPaid !== order.totalAmount) {
-      console.error(`Amount mismatch for order ${order._id}. Paid: ${amountPaid}, Expected: ${order.totalAmount}`);
-      order.paymentStatus = 'amount_mismatch';
+      console.error(`[${requestId}] Amount mismatch for order ${order._id}. Paid: ${amountPaid}, Expected: ${order.totalAmount}`);
+      order.paymentStatus = 'failed';
+      order.orderUpdateDate = new Date();
       await order.save();
       return res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/payment-failed?error=amount_mismatch`);
     }
 
     if (order.paymentStatus === 'completed') {
-      console.log(`ℹ️ Order ${order._id} already completed via webhook. Redirecting user.`);
+      console.log(`[${requestId}] ℹ️ Order ${order._id} already completed.`);
       return res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/order-confirmation/${order._id}`);
     }
 
@@ -193,34 +340,95 @@ const verifyPayment = async (req, res) => {
     };
     
     await order.save();
-    console.log(`✅ Order ${order._id} confirmed via callback verification.`);
+    console.log(`[${requestId}] ✅ Order ${order._id} confirmed via callback verification.`);
 
+    // Clear user's cart
     try {
       const cart = await Cart.findOne({ userId: order.userId });
       if (cart) {
         cart.items = [];
         cart.lastUpdated = new Date();
         await cart.save();
-        console.log(`🛒 Cart cleared for user: ${order.userId}`);
+        console.log(`[${requestId}] 🛒 Cart cleared for user: ${order.userId}`);
       } else {
-        console.log(`ℹ️ No cart found for user: ${order.userId}`);
+        console.log(`[${requestId}] ℹ️ No cart found for user: ${order.userId}`);
       }
     } catch (cartError) {
-      console.error(`❌ Error clearing cart for user ${order.userId}:`, cartError);
+      console.error(`[${requestId}] ❌ Error clearing cart:`, cartError);
     }
 
-    res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/order-confirmation/${order._id}`);
+    // CRITICAL FIX: Regenerate authentication tokens and set cookies
+    try {
+      // Generate new tokens
+      const accessToken = jwt.sign(
+        { id: order.userId, role: 'user' },
+        process.env.JWT_SECRET,
+        { expiresIn: '60m' }
+      );
+      
+      const refreshToken = jwt.sign(
+        { id: order.userId, role: 'user' },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Set cookies with proper SameSite settings for cross-origin redirects
+      const isProduction = process.env.NODE_ENV === 'production';
+      
+      res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax', // 'none' allows cross-origin in production
+        maxAge: 60 * 60 * 1000, // 60 minutes
+        domain: isProduction ? process.env.COOKIE_DOMAIN : undefined
+      });
+      
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        domain: isProduction ? process.env.COOKIE_DOMAIN : undefined
+      });
+      
+      console.log(`[${requestId}] 🔑 Authentication cookies set for user: ${order.userId}`);
+    } catch (tokenError) {
+      console.error(`[${requestId}] ❌ Token generation error:`, tokenError);
+      // Continue redirect even if token generation fails
+    }
+
+    const responseTime = Date.now() - startTime;
+    console.log(`[${requestId}] ✅ Verification completed in ${responseTime}ms`);
+
+    // CRITICAL FIX: Generate a short-lived token to pass in URL for frontend to capture
+    const urlToken = jwt.sign(
+      { id: order.userId, role: 'user' },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' } // Short-lived token just for the redirect
+    );
+    
+    // Redirect with token in URL for frontend to capture and save to localStorage
+    const redirectUrl = `${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/order-confirmation/${order._id}?token=${urlToken}&payment_success=true`;
+    
+    console.log(`[${requestId}] 🔀 Redirecting to: ${redirectUrl}`);
+    res.redirect(redirectUrl);
 
   } catch (error) {
-    console.error('❌ Verify Payment Error:', error);
+    const responseTime = Date.now() - startTime;
+    console.error(`[${requestId}] ❌ Verify Payment Error (${responseTime}ms):`, error);
+    
     res.redirect(`${process.env.FRONTEND_BASE_URL || 'http://localhost:5173'}/payment-failed?error=server_error`);
   }
 };
 
 const getOrderDetails = async (req, res) => {
+  console.log('📋 Fetching order details:', req.params.orderId);
+  
+  const startTime = Date.now();
+  const requestId = crypto.randomBytes(8).toString('hex');
+  
   try {
     const { orderId } = req.params;
-    console.log('📋 Fetching order details:', orderId);
     
     const order = await Order.findById(orderId);
     
@@ -231,6 +439,8 @@ const getOrderDetails = async (req, res) => {
       });
     }
 
+    const responseTime = Date.now() - startTime;
+    
     res.status(200).json({
       success: true,
       order: {
@@ -248,7 +458,9 @@ const getOrderDetails = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Get Order Error:', error);
+    const responseTime = Date.now() - startTime;
+    console.error(`[${requestId}] ❌ Get Order Error (${responseTime}ms):`, error);
+    
     res.status(500).json({
       success: false,
       message: 'Failed to get order details'

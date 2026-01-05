@@ -1,4 +1,4 @@
-// helpers/paystack.js - CREATE THIS FILE
+// helpers/paystack.js 
 require('dotenv').config();
 const https = require('https');
 
@@ -34,14 +34,21 @@ class PaystackHelper {
         apiRes.on('data', (chunk) => (data += chunk));
         apiRes.on('end', () => {
           try {
-            resolve(JSON.parse(data));
+            const response = JSON.parse(data);
+            console.log('Paystack response:', response);
+            resolve(response);
           } catch (error) {
+            console.error('Failed to parse Paystack response:', error);
             reject(new Error('Failed to parse Paystack response'));
           }
         });
       });
 
-      req.on('error', (error) => reject(error));
+      req.on('error', (error) => {
+        console.error('Paystack request error:', error);
+        reject(error);
+      });
+      
       req.write(params);
       req.end();
     });
@@ -70,6 +77,7 @@ class PaystackHelper {
           }
         });
       });
+      
       req.on('error', (error) => reject(error));
       req.end();
     });

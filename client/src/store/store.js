@@ -1,3 +1,4 @@
+// store/index.js - COMPLETE FIXED VERSION
 import { configureStore } from "@reduxjs/toolkit";
 
 // Auth
@@ -12,6 +13,7 @@ import shopCartReducer from "./shop/cart-slice";
 import shopAddressSlice from "./shop/address-slice";
 import searchReducer from "./shop/search-slice";
 import wishlistReducer from "./shop/wishlist-slice";
+import shopOrderReducer from "./shop/order-slice"; // FIXED IMPORT NAME
 
 // Clear reducer
 import clearReducer from "./clear-slice";
@@ -25,8 +27,16 @@ const store = configureStore({
     shopAddress: shopAddressSlice,
     search: searchReducer,
     wishlist: wishlistReducer,
+    shopOrder: shopOrderReducer, // FIXED KEY NAME (was shoppingOrderSlice)
     clear: clearReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: ['shopOrder/createNewOrder/fulfilled'],
+        ignoredPaths: ['shopOrder.approvalURL'],
+      },
+    }),
 });
 
 export default store;

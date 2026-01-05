@@ -1,13 +1,12 @@
-// routes/shop/order-routes.js - FIXED
 const express = require('express');
 const router = express.Router();
 const { 
   createOrder, 
   verifyPayment,
   getOrderDetails 
-} = require('../../../controllers/shop/order-controller'); // FIXED: Correct relative path
+} = require('../../controllers/shop/order-controller');
 
-const { handlePaystackWebhook } = require('../../../controllers/shop/webhookController');
+const { handlePaystackWebhook } = require('../../controllers/shop/webhookController');
 
 // Create new order and initialize Paystack payment
 router.post('/create', createOrder);

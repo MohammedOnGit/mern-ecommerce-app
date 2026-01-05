@@ -1,237 +1,164 @@
-// import React, { useEffect, useState } from "react";
-// import { useParams, useNavigate, useLocation } from "react-router-dom";
-// import { Button } from "@/components/ui/button";
-// import { CheckCircle, ShoppingBag, Home, Package, Clock, Mail, Truck } from "lucide-react";
-
-// function OrderConfirmation() {
-//   const { orderId } = useParams();
-//   const navigate = useNavigate();
-//   const location = useLocation();
-//   const [order, setOrder] = useState(location.state?.order || null);
-//   const [loading, setLoading] = useState(!order);
-
-//   useEffect(() => {
-//     if (orderId && !order) {
-//       fetchOrderDetails();
-//     }
-//   }, [orderId]);
-
-//   const fetchOrderDetails = async () => {
-//     try {
-//       setLoading(true);
-//       const response = await fetch(`http://localhost:5000/api/shop/orders/${orderId}`);
-//       const data = await response.json();
-//       if (data.success) {
-//         setOrder(data.order);
-//       }
-//     } catch (error) {
-//       console.error("Error fetching order:", error);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // Prevent multiple fetches
-//   useEffect(() => {
-//     let isMounted = true;
-    
-//     const fetchData = async () => {
-//       if (orderId && !order && isMounted) {
-//         await fetchOrderDetails();
-//       }
-//     };
-    
-//     fetchData();
-    
-//     return () => {
-//       isMounted = false;
-//     };
-//   }, []);
-
-//   if (loading) {
-//     return (
-//       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-//         <div className="text-center">
-//           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-//           <p className="mt-4 text-gray-600">Loading order details...</p>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-gray-50 py-8 px-4">
-//       <div className="max-w-3xl mx-auto">
-//         {/* Success Header */}
-//         <div className="text-center mb-8 bg-white p-8 rounded-xl shadow-sm">
-//           <div className="h-20 w-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-//             <CheckCircle className="h-12 w-12 text-green-600" />
-//           </div>
-//           <h1 className="text-3xl font-bold mb-3">Payment Successful!</h1>
-//           <p className="text-gray-600 mb-4">
-//             Thank you for your purchase. Your order has been confirmed.
-//           </p>
-//           <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg mb-4">
-//             <Mail className="h-4 w-4" />
-//             <span className="text-sm">Receipt sent to your email</span>
-//           </div>
-          
-//           {order?._id && (
-//             <div className="mt-6 p-4 bg-gray-50 rounded-lg inline-block">
-//               <p className="text-sm text-gray-500">Order Reference</p>
-//               <p className="font-mono font-bold text-lg">{order._id}</p>
-//             </div>
-//           )}
-//         </div>
-
-//         {/* Order Summary Card */}
-//         {order && (
-//           <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-//             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-//               <Package className="h-5 w-5" />
-//               Order Summary
-//             </h2>
-            
-//             <div className="space-y-4">
-//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-//                 <div>
-//                   <p className="text-sm text-gray-500">Order Status</p>
-//                   <p className="font-medium capitalize">
-//                     {order.orderStatus === 'confirmed' && (
-//                       <span className="inline-flex items-center gap-1 text-green-600">
-//                         <Truck className="h-4 w-4" />
-//                         {order.orderStatus}
-//                       </span>
-//                     )}
-//                     {order.orderStatus !== 'confirmed' && order.orderStatus}
-//                   </p>
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-gray-500">Payment Status</p>
-//                   <p className="font-medium capitalize text-green-600">
-//                     {order.paymentStatus}
-//                   </p>
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-gray-500">Total Amount</p>
-//                   <p className="font-bold text-lg">GHC {order.totalAmount?.toFixed(2)}</p>
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-gray-500">Order Date</p>
-//                   <p>{new Date(order.orderDate).toLocaleDateString()}</p>
-//                 </div>
-//               </div>
-              
-//               {order.shippingAddress && (
-//                 <div className="pt-4 border-t">
-//                   <p className="text-sm text-gray-500 mb-2">Shipping Address</p>
-//                   <p className="font-medium">{order.shippingAddress.address}</p>
-//                   <p className="text-gray-600">{order.shippingAddress.city}</p>
-//                 </div>
-//               )}
-//             </div>
-//           </div>
-//         )}
-
-//         {/* Action Buttons */}
-//         <div className="flex flex-col sm:flex-row gap-4">
-//           <Button
-//             onClick={() => navigate("/shop")}
-//             className="flex-1 gap-2 py-6 text-lg"
-//           >
-//             <Home className="h-5 w-5" />
-//             Continue Shopping
-//           </Button>
-//           <Button
-//             variant="outline"
-//             onClick={() => navigate("/shop/account")}
-//             className="flex-1 gap-2 py-6 text-lg"
-//           >
-//             <ShoppingBag className="h-5 w-5" />
-//             View My Orders
-//           </Button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default OrderConfirmation;
-
-
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, ShoppingBag, Home, Package, Mail, Truck, Loader2 } from "lucide-react";
+import { CheckCircle, ShoppingBag, Home, Package, Mail, Truck, Clock, AlertCircle, CreditCard } from "lucide-react";
 import { clearCart } from "@/store/shop/cart-slice";
-import { clearAllUserData } from "@/store/clear-slice";
+import { checkAuthStatus } from "@/store/auth-slice";
+import axios from "axios";
+import { toast } from "sonner";
 
 function OrderConfirmation() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const dispatch = useDispatch();
-  const [order, setOrder] = useState(location.state?.order || null);
-  const [loading, setLoading] = useState(!order);
-  const [isCartCleared, setIsCartCleared] = useState(false);
+  
+  const { user, isAuthenticated } = useSelector((state) => state.auth);
+  
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sessionRestored, setSessionRestored] = useState(false);
+  const [urlToken, setUrlToken] = useState(null);
 
+  // Step 1: Check for token in URL and restore session
   useEffect(() => {
-    if (!isCartCleared) {
-      dispatch(clearCart());
-      dispatch(clearAllUserData());
-      
-      localStorage.removeItem('cartItems');
-      localStorage.removeItem('cartLastUpdated');
-      
-      console.log('🛒 Cart cleared from Redux state on order confirmation');
-      setIsCartCleared(true);
-    }
-  }, [dispatch, isCartCleared]);
+    const restoreSession = async () => {
+      try {
+        const tokenFromUrl = searchParams.get('token');
+        const paymentSuccess = searchParams.get('payment_success') === 'true';
+        
+        console.log("Order confirmation - URL parameters:", {
+          tokenFromUrl: !!tokenFromUrl,
+          paymentSuccess,
+          orderId
+        });
 
+        // If we have a token from URL, save it immediately
+        if (tokenFromUrl) {
+          localStorage.setItem('token', tokenFromUrl);
+          setUrlToken(tokenFromUrl);
+          console.log("Token saved from URL to localStorage");
+        }
+
+        // Always try to restore auth
+        await dispatch(checkAuthStatus());
+        
+        // Clear cart after successful payment
+        if (paymentSuccess || location.state?.fromPayment) {
+          dispatch(clearCart());
+          
+          // Clear cart-related localStorage items (keep auth)
+          ['cart_backup', 'cartItems', 'cartLastUpdated'].forEach(key => 
+            localStorage.removeItem(key)
+          );
+          console.log('🛒 Cart cleared after payment');
+        }
+        
+        setSessionRestored(true);
+        
+      } catch (error) {
+        console.warn("Session restoration note:", error.message);
+        setSessionRestored(true); // Continue anyway
+      }
+    };
+
+    restoreSession();
+  }, [dispatch, searchParams, location.state, orderId]);
+
+  // Step 2: Fetch order details
   useEffect(() => {
-    if (orderId && !order) {
+    if (sessionRestored) {
       fetchOrderDetails();
     }
-  }, [orderId, order]);
+  }, [orderId, sessionRestored]);
 
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/shop/orders/${orderId}`);
-      const data = await response.json();
-      if (data.success) {
-        setOrder(data.order);
+      
+      // Try to get order from location state first
+      if (location.state?.order) {
+        setOrder(location.state.order);
+        setLoading(false);
+        return;
+      }
+      
+      // If we have an orderId, fetch from API
+      if (orderId) {
+        const token = localStorage.getItem('token') || urlToken;
+        
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/shop/orders/${orderId}`,
+          {
+            withCredentials: true,
+            headers: token ? { 
+              'Authorization': `Bearer ${token}`,
+              'Cache-Control': 'no-cache'
+            } : {}
+          }
+        );
+        
+        if (response.data.success) {
+          setOrder(response.data.order);
+          
+          // Save order to localStorage for persistence
+          localStorage.setItem('lastOrder', JSON.stringify({
+            order: response.data.order,
+            timestamp: Date.now(),
+            restored: true
+          }));
+        } else {
+          throw new Error("Failed to fetch order details");
+        }
+      } else {
+        // Try to load last order from localStorage
+        const savedOrder = localStorage.getItem('lastOrder');
+        if (savedOrder) {
+          const parsed = JSON.parse(savedOrder);
+          // Only use if less than 1 hour old
+          if (Date.now() - parsed.timestamp < 3600000) {
+            setOrder(parsed.order);
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching order:", error);
+      
+      // Try without auth token
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/shop/orders/${orderId}`
+        );
+        if (response.data.success) {
+          setOrder(response.data.order);
+        } else {
+          toast.error("Could not load order details");
+        }
+      } catch (secondError) {
+        toast.error("Unable to load order information");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    
-    const fetchData = async () => {
-      if (orderId && !order && isMounted) {
-        await fetchOrderDetails();
-      }
-    };
-    
-    fetchData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
+  // Handle loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading order details...</p>
+        <div className="text-center space-y-4">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <CreditCard className="h-8 w-8 text-blue-500" />
+            </div>
+          </div>
+          <div>
+            <p className="text-gray-600 font-medium">Loading your order</p>
+            <p className="text-sm text-gray-500 mt-1">Please wait...</p>
+          </div>
         </div>
       </div>
     );
@@ -240,94 +167,198 @@ function OrderConfirmation() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-8 bg-white p-8 rounded-xl shadow-sm">
+        {/* Success Header */}
+        <div className="text-center mb-8 bg-white p-8 rounded-xl shadow-sm border border-green-100">
           <div className="h-20 w-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="h-12 w-12 text-green-600" />
           </div>
-          <h1 className="text-3xl font-bold mb-3">Payment Successful!</h1>
-          <p className="text-gray-600 mb-4">
-            Thank you for your purchase. Your order has been confirmed.
+          <h1 className="text-3xl font-bold mb-3 text-gray-800">Order Confirmed!</h1>
+          <p className="text-gray-600 mb-4 max-w-md mx-auto">
+            Thank you for your purchase. Your order has been received and is being processed.
           </p>
+          
           <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg mb-4">
             <Mail className="h-4 w-4" />
-            <span className="text-sm">Receipt sent to your email</span>
+            <span className="text-sm">
+              {order?.customerEmail || user?.email 
+                ? `Receipt sent to ${order?.customerEmail || user?.email}`
+                : "Check your email for receipt"
+              }
+            </span>
           </div>
           
           {order?._id && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg inline-block">
-              <p className="text-sm text-gray-500">Order Reference</p>
-              <p className="font-mono font-bold text-lg">{order._id}</p>
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg inline-block max-w-full">
+              <p className="text-sm text-gray-500 mb-1">Order Reference</p>
+              <p className="font-mono font-bold text-lg text-gray-800 truncate" title={order._id}>
+                {order._id}
+              </p>
             </div>
           )}
         </div>
 
-        {order && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        {/* Order Details */}
+        {order ? (
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-800">
               <Package className="h-5 w-5" />
               Order Summary
             </h2>
             
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Order Status</p>
-                  <p className="font-medium capitalize">
-                    {order.orderStatus === 'confirmed' && (
-                      <span className="inline-flex items-center gap-1 text-green-600">
-                        <Truck className="h-4 w-4" />
-                        {order.orderStatus}
-                      </span>
-                    )}
-                    {order.orderStatus !== 'confirmed' && order.orderStatus}
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-gray-500 mb-1">Order Status</p>
+                  <p className="font-medium capitalize text-green-700 flex items-center gap-2">
+                    {order.orderStatus === 'confirmed' && <CheckCircle className="h-4 w-4" />}
+                    {order.orderStatus === 'pending' && <Clock className="h-4 w-4" />}
+                    {order.orderStatus || 'processing'}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Payment Status</p>
-                  <p className="font-medium capitalize text-green-600">
-                    {order.paymentStatus}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-gray-500 mb-1">Payment Status</p>
+                  <p className="font-medium capitalize text-blue-700 flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    {order.paymentStatus || 'completed'}
                   </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Total Amount</p>
-                  <p className="font-bold text-lg">GHC {order.totalAmount?.toFixed(2)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Order Date</p>
-                  <p>{new Date(order.orderDate).toLocaleDateString()}</p>
                 </div>
               </div>
               
+              {/* Amounts */}
+              <div className="border-t pt-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Items Total</span>
+                    <span className="font-medium">GHC {order.subtotal?.toFixed(2) || order.totalAmount?.toFixed(2)}</span>
+                  </div>
+                  {order.shippingFee > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Shipping</span>
+                      <span className="font-medium">GHC {order.shippingFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {order.tax > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Tax</span>
+                      <span className="font-medium">GHC {order.tax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-3 border-t font-bold text-lg">
+                    <span>Total Amount</span>
+                    <span>GHC {order.totalAmount?.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Shipping Address */}
               {order.addressInfo && (
                 <div className="pt-4 border-t">
-                  <p className="text-sm text-gray-500 mb-2">Shipping Address</p>
-                  <p className="font-medium">{order.addressInfo.address}</p>
-                  <p className="text-gray-600">{order.addressInfo.city}</p>
-                  {order.addressInfo.phone && (
-                    <p className="text-gray-600 mt-1">Phone: {order.addressInfo.phone}</p>
-                  )}
+                  <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center gap-2">
+                    <Truck className="h-4 w-4" />
+                    Shipping Details
+                  </h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="font-medium text-gray-800">{order.addressInfo.address}</p>
+                    <p className="text-gray-600">{order.addressInfo.city}</p>
+                    {order.addressInfo.phone && (
+                      <p className="text-gray-600 mt-1">Phone: {order.addressInfo.phone}</p>
+                    )}
+                    {order.addressInfo.notes && (
+                      <p className="text-sm text-gray-500 mt-2 italic">Note: {order.addressInfo.notes}</p>
+                    )}
+                  </div>
                 </div>
+              )}
+              
+              {/* Order Items */}
+              {order.cartItems && order.cartItems.length > 0 && (
+                <div className="pt-4 border-t">
+                  <h3 className="text-sm font-medium text-gray-500 mb-3">Order Items ({order.cartItems.length})</h3>
+                  <div className="space-y-3">
+                    {order.cartItems.map((item, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                        {item.image && (
+                          <img 
+                            src={item.image} 
+                            alt={item.title}
+                            className="h-12 w-12 object-cover rounded"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-800">{item.title}</p>
+                          <p className="text-sm text-gray-600">
+                            GHC {item.price?.toFixed(2)} × {item.quantity}
+                          </p>
+                        </div>
+                        <div className="font-medium text-gray-800">
+                          GHC {(item.price * item.quantity).toFixed(2)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+            <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold mb-2 text-gray-800">Order Not Found</h3>
+            <p className="text-gray-600 mb-6">
+              We couldn't find your order details. Please check your email for confirmation.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={() => navigate("/shop")}
+                className="gap-2"
+              >
+                <Home className="h-4 w-4" />
+                Continue Shopping
+              </Button>
+              {isAuthenticated && (
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/shop/account")}
+                  className="gap-2"
+                >
+                  <ShoppingBag className="h-4 w-4" />
+                  View My Orders
+                </Button>
               )}
             </div>
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Button
-            onClick={() => navigate("/shop")}
-            className="flex-1 gap-2 py-6 text-lg"
-          >
-            <Home className="h-5 w-5" />
-            Continue Shopping
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => navigate("/shop/account")}
-            className="flex-1 gap-2 py-6 text-lg"
-          >
-            <ShoppingBag className="h-5 w-5" />
-            View My Orders
-          </Button>
+        {/* Action Buttons */}
+        {order && (
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Button
+              onClick={() => navigate("/shop")}
+              className="flex-1 gap-2 py-6 text-lg bg-blue-600 hover:bg-blue-700 transition-colors"
+              size="lg"
+            >
+              <Home className="h-5 w-5" />
+              Continue Shopping
+            </Button>
+            {isAuthenticated && (
+              <Button
+                variant="outline"
+                onClick={() => navigate("/shop/account")}
+                className="flex-1 gap-2 py-6 text-lg border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                size="lg"
+              >
+                <ShoppingBag className="h-5 w-5" />
+                View My Orders
+              </Button>
+            )}
+          </div>
+        )}
+        
+        {/* Help Text */}
+        <div className="mt-8 text-center text-sm text-gray-500">
+          <p>Need help? Contact our support team</p>
+          <p className="mt-1">Order confirmation #{orderId || 'N/A'}</p>
         </div>
       </div>
     </div>

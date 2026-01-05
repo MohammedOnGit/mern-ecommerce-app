@@ -1,7 +1,6 @@
-// models/Order.js - COMPLETE FIXED FILE
+S// models/Order.js 
 const mongoose = require("mongoose");
 
-// Define a schema
 const orderSchema = new mongoose.Schema({
   userId: {
     type: String,
@@ -20,16 +19,18 @@ const orderSchema = new mongoose.Schema({
       image: String,
       price: {
         type: Number,
-        required: true
-      },
-      salePrice: {
-        type: Number
+        required: true,
+        min: 0
       },
       quantity: {
         type: Number,
         required: true,
         min: 1
       },
+      productTotal: {
+        type: Number,
+        min: 0
+      }
     },
   ],
   addressInfo: {
@@ -53,8 +54,8 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['paypal', 'paystack', 'cod', 'card'], // FIXED: Added 'paystack'
-    default: 'paypal' // Optional: Change to 'paystack' if you prefer
+    enum: ['paypal', 'paystack', 'cod', 'card'],
+    default: 'paystack'
   },
   paymentStatus: {
     type: String,
@@ -66,6 +67,25 @@ const orderSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  subtotal: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  shippingFee: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  tax: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  customerEmail: {
+    type: String,
+    required: true
+  },
   orderDate: {
     type: Date,
     default: Date.now
@@ -74,26 +94,25 @@ const orderSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  paymentId: String, // PayPal order ID or Paystack reference
-  payerId: String, // PayPal payer ID or Paystack customer email
-  // ADD THESE FIELDS FOR BETTER TRACKING
+  paymentId: String,
+  payerId: String,
   transactionDetails: {
-    captureId: String,
-    status: String,
-    capturedAt: Date,
-    payer: Object
-  },
-  shippingStatus: {
-    type: String,
-    enum: ['pending', 'packed', 'shipped', 'out_for_delivery', 'delivered'],
-    default: 'pending'
-  },
-  trackingNumber: String,
-  estimatedDelivery: Date
+    gateway: String,
+    chargeId: String,
+    channel: String,
+    ipAddress: String,
+    paidAt: Date
+  }
+}, {
+  timestamps: true
 });
+
+// Add indexes
+orderSchema.index({ userId: 1 });
+orderSchema.index({ paymentId: 1 });
+orderSchema.index({ orderDate: -1 });
 
 // Create model
 const Order = mongoose.model("Order", orderSchema);
 
-// Export model
 module.exports = Order;
