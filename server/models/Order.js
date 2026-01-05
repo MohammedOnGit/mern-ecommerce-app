@@ -1,4 +1,4 @@
-S// models/Order.js 
+// models/Order.js 
 const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema({
