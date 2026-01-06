@@ -378,8 +378,8 @@ const verifyPayment = async (req, res) => {
       res.cookie('accessToken', accessToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax', // 'none' allows cross-origin in production
-        maxAge: 60 * 60 * 1000, // 60 minutes
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 60 * 60 * 1000,
         domain: isProduction ? process.env.COOKIE_DOMAIN : undefined
       });
       
@@ -387,24 +387,23 @@ const verifyPayment = async (req, res) => {
         httpOnly: true,
         secure: isProduction,
         sameSite: isProduction ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         domain: isProduction ? process.env.COOKIE_DOMAIN : undefined
       });
       
       console.log(`[${requestId}] 🔑 Authentication cookies set for user: ${order.userId}`);
     } catch (tokenError) {
       console.error(`[${requestId}] ❌ Token generation error:`, tokenError);
-      // Continue redirect even if token generation fails
     }
 
     const responseTime = Date.now() - startTime;
     console.log(`[${requestId}] ✅ Verification completed in ${responseTime}ms`);
 
-    // CRITICAL FIX: Generate a short-lived token to pass in URL for frontend to capture
+    // Generate a short-lived token to pass in URL for frontend to capture
     const urlToken = jwt.sign(
       { id: order.userId, role: 'user' },
       process.env.JWT_SECRET,
-      { expiresIn: '5m' } // Short-lived token just for the redirect
+      { expiresIn: '5m' }
     );
     
     // Redirect with token in URL for frontend to capture and save to localStorage
@@ -468,8 +467,72 @@ const getOrderDetails = async (req, res) => {
   }
 };
 
+const getAllOrdersByUserId = async (req, res) => {
+  console.log('📋 Fetching all orders for user:', req.params.userId);
+  
+  const startTime = Date.now();
+  const requestId = crypto.randomBytes(8).toString('hex');
+  
+  try {
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    // Convert userId to string if needed
+    const userIdStr = userId.toString();
+    console.log(`[${requestId}] Searching orders for user ID string: ${userIdStr}`);
+
+    const orders = await Order.find({ userId: userIdStr })
+      .sort({ orderDate: -1 })
+      .select('-__v');
+
+    console.log(`[${requestId}] Found ${orders.length} orders for user: ${userIdStr}`);
+
+    const responseTime = Date.now() - startTime;
+    
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders: orders.map(order => ({
+        _id: order._id,
+        userId: order.userId,
+        orderNumber: order.paymentId || `ORD-${order._id.toString().slice(-6).toUpperCase()}`,
+        cartItems: order.cartItems,
+        addressInfo: order.addressInfo,
+        orderStatus: order.orderStatus,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        subtotal: order.subtotal,
+        shippingFee: order.shippingFee,
+        tax: order.tax,
+        totalAmount: order.totalAmount,
+        orderDate: order.orderDate,
+        orderUpdateDate: order.orderUpdateDate,
+        paymentId: order.paymentId,
+        transactionDetails: order.transactionDetails,
+        customerEmail: order.customerEmail
+      }))
+    });
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    console.error(`[${requestId}] ❌ Get All Orders Error (${responseTime}ms):`, error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get orders',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 module.exports = { 
   createOrder, 
   verifyPayment,
-  getOrderDetails 
+  getOrderDetails,
+  getAllOrdersByUserId 
 };

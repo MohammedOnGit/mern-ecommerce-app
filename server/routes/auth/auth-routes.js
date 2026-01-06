@@ -1,9 +1,4 @@
-
 const express = require("express");
-
-// const { registerUser, loginUser, logoutUser, authMiddleware,} = require("../auth/auth-controller");
-
-// const { registerUser, loginUser, logoutUser, authMiddleware} = require("../auth/auth-controller");
 
 const { loginUser, registerUser, logoutUser, authMiddleware } = require('../../controllers/auth/auth-controller');
 

@@ -1,4 +1,4 @@
-s// store/auth-slice.js - 
+// store/auth-slice.js - 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import { clearAllUserData } from "../clear-slice";

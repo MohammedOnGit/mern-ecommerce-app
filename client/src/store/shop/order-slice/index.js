@@ -1,4 +1,3 @@
-// store/shop/order-slice.js 
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
@@ -9,7 +8,9 @@ const initialState = {
   isloading: false,
   orderId: null,
   error: null,
-  lastOrderData: null
+  orderDetails: null,
+  orders: [],
+  orderCount: 0
 };
 
 export const createNewOrder = createAsyncThunk(
@@ -23,10 +24,8 @@ export const createNewOrder = createAsyncThunk(
         email: orderData.customerEmail
       });
       
-      // Always get token from localStorage for consistency
       const token = localStorage.getItem("token") || "";
       
-      // Prepare request config
       const config = {
         withCredentials: true,
         timeout: 15000,
@@ -35,7 +34,6 @@ export const createNewOrder = createAsyncThunk(
         }
       };
       
-      // Add auth header if token exists
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -67,7 +65,6 @@ export const createNewOrder = createAsyncThunk(
       let errorMessage = "Failed to create order";
       
       if (error.response) {
-        // Server responded with error
         const serverError = error.response.data;
         const status = error.response.status;
         
@@ -99,15 +96,153 @@ export const createNewOrder = createAsyncThunk(
           errorMessage = `Error ${status}: ${serverError?.error || "Unknown server error"}`;
         }
       } else if (error.request) {
-        // Request made but no response
         console.error("🛒 No response received:", error.request);
         errorMessage = "Network error. Please check your internet connection.";
       } else if (error.message) {
-        // Something else happened
         errorMessage = error.message;
       }
       
       console.error("🛒 Final error message to user:", errorMessage);
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+export const getAllOrdersByUserId = createAsyncThunk(
+  "shopOrder/getAllOrdersByUserId", // CHANGED: Different name from createNewOrder
+  async (userId, { rejectWithValue }) => {
+    try {
+      console.log("🛒 Redux: Fetching orders for user ID:", userId);
+      
+      // Validate userId is a string
+      if (!userId || typeof userId !== 'string') {
+        console.error("Invalid user ID:", userId);
+        return rejectWithValue("Invalid user ID format");
+      }
+      
+      const token = localStorage.getItem("token") || "";
+      
+      const config = {
+        withCredentials: true,
+        timeout: 15000,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      };
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      
+      console.log("🛒 Making request to:", `${API_BASE_URL}/shop/orders/list/${userId}`);
+      
+      const response = await axios.get(
+        `${API_BASE_URL}/shop/orders/list/${userId}`,
+        config
+      );
+      
+      console.log("🛒 Redux: Orders response:", response.data);
+      
+      if (response.data?.success) {
+        return response.data;
+      } else {
+        const errorMsg = response.data?.message || "Failed to fetch orders";
+        console.error("🛒 Server returned non-success:", response.data);
+        return rejectWithValue(errorMsg);
+      }
+    } catch (error) {
+      console.error("🛒 Redux: Fetch orders error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      
+      let errorMessage = "Failed to fetch orders";
+      
+      if (error.response) {
+        const serverError = error.response.data;
+        const status = error.response.status;
+        
+        if (serverError?.message) {
+          errorMessage = serverError.message;
+        } else if (status === 404) {
+          errorMessage = "No orders found for this user";
+        } else if (status === 401) {
+          errorMessage = "Please log in to view your orders";
+        } else if (status === 403) {
+          errorMessage = "Access denied";
+        } else if (status === 500) {
+          errorMessage = "Server error. Please try again later.";
+        }
+      } else if (error.request) {
+        errorMessage = "Network error. Please check your internet connection.";
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = "Request timeout. Please try again.";
+      }
+      
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+export const getOrderDetails = createAsyncThunk(
+  "shopOrder/getOrderDetails",
+  async (orderId, { rejectWithValue }) => {
+    try {
+      console.log("🛒 Redux: Getting order details for:", orderId);
+      
+      const token = localStorage.getItem("token") || "";
+      
+      const config = {
+        withCredentials: true,
+        timeout: 15000,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      };
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      
+      const response = await axios.get(
+        `${API_BASE_URL}/shop/orders/details/${orderId}`,
+        config
+      );
+      
+      console.log("🛒 Redux: Order details response:", response.data);
+      
+      if (response.data?.success) {
+        return response.data;
+      } else {
+        const errorMsg = response.data?.message || "Failed to get order details";
+        console.error("🛒 Server returned non-success:", response.data);
+        return rejectWithValue(errorMsg);
+      }
+    } catch (error) {
+      console.error("🛒 Redux: Get order details error:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      
+      let errorMessage = "Failed to get order details";
+      
+      if (error.response) {
+        const serverError = error.response.data;
+        const status = error.response.status;
+        
+        if (serverError?.message) {
+          errorMessage = serverError.message;
+        } else if (status === 404) {
+          errorMessage = "Order not found";
+        } else if (status === 401) {
+          errorMessage = "Please log in to view order details";
+        }
+      } else if (error.request) {
+        errorMessage = "Network error. Please check your internet connection.";
+      }
+      
       return rejectWithValue(errorMessage);
     }
   }
@@ -125,10 +260,17 @@ const shoppingOrderSlice = createSlice({
       state.orderId = null;
       state.error = null;
       state.isloading = false;
-      state.lastOrderData = null;
+      state.orderDetails = null;
+      state.orders = [];
+      state.orderCount = 0;
     },
     setLastOrderData: (state, action) => {
-      state.lastOrderData = action.payload;
+      state.orderDetails = action.payload;
+    },
+    clearOrders: (state) => {
+      state.orders = [];
+      state.orderCount = 0;
+      state.orderDetails = null;
     }
   },
   extraReducers: (builder) => {
@@ -142,21 +284,46 @@ const shoppingOrderSlice = createSlice({
         state.approvalURL = action.payload.data?.payment?.authorization_url || action.payload.authorization_url;
         state.orderId = action.payload.orderId || action.payload.data?.orderId;
         state.error = null;
-        state.lastOrderData = action.payload;
+        state.orderDetails = action.payload;
       })
       .addCase(createNewOrder.rejected, (state, action) => {
         state.isloading = false;
         state.approvalURL = null;
         state.orderId = null;
-        // Safe error assignment
-        state.error = typeof action.payload === 'string' 
-          ? action.payload 
-          : typeof action.error?.message === 'string'
-          ? action.error.message
-          : "Failed to create order";
+        state.error = action.payload || "Failed to create order";
+      })
+      .addCase(getAllOrdersByUserId.pending, (state) => {
+        state.isloading = true;
+        state.error = null;
+      })
+      .addCase(getAllOrdersByUserId.fulfilled, (state, action) => {
+        state.isloading = false;
+        state.orderDetails = action.payload;
+        state.orders = action.payload.orders || [];
+        state.orderCount = action.payload.count || 0;
+        state.error = null;
+      })
+      .addCase(getAllOrdersByUserId.rejected, (state, action) => {
+        state.isloading = false;
+        state.error = action.payload;
+        state.orders = [];
+        state.orderCount = 0;
+      })
+      .addCase(getOrderDetails.pending, (state) => {
+        state.isloading = true;
+        state.error = null;
+      })
+      .addCase(getOrderDetails.fulfilled, (state, action) => {
+        state.isloading = false;
+        state.orderDetails = action.payload;
+        state.error = null;
+      })
+      .addCase(getOrderDetails.rejected, (state, action) => {
+        state.isloading = false;
+        state.error = action.payload;
       });
   },
 });
 
-export const { clearOrderError, resetOrderState, setLastOrderData } = shoppingOrderSlice.actions;
+export const { clearOrderError, resetOrderState, setLastOrderData, clearOrders } = shoppingOrderSlice.actions;
 export default shoppingOrderSlice.reducer;

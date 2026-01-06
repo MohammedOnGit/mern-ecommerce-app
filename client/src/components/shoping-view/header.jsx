@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   House,
   LogOut,
@@ -27,7 +33,12 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet"; // Added SheetTitle import
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet"; // Added SheetTitle import
 import { Button } from "@/components/ui/button";
 import { useDispatch, useSelector } from "react-redux";
 import { shopingViewHeaderMenuItems } from "@/config";
@@ -52,6 +63,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { logoutUser } from "@/store/auth-slice";
 import { fetchCartItems } from "@/store/shop/cart-slice";
 import { fetchWishlist } from "@/store/shop/wishlist-slice";
+import { getAllOrdersByUserId } from "@/store/shop/order-slice"; // ADDED: Import order fetch action
 import UserCartWrapper from "./cart-wrapper";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -62,7 +74,7 @@ import {
   clearRecentSearches,
   loadRecentSearches,
   setSearchQuery,
-  fetchSearchSuggestions
+  fetchSearchSuggestions,
 } from "@/store/shop/search-slice";
 import { clearCart } from "@/store/shop/cart-slice";
 import { clearWishlist } from "@/store/shop/wishlist-slice";
@@ -74,29 +86,31 @@ import { requestManager } from "@/utils/request-manager";
 function WishlistIndicator({ isMobile = false }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { items, isLoading, wishlistCount } = useSelector((state) => state.wishlist);
+  const { items, isLoading, wishlistCount } = useSelector(
+    (state) => state.wishlist
+  );
   const { user } = useSelector((state) => state.auth);
   const lastFetchRef = useRef(0);
   const fetchCooldown = 30000; // 30 seconds between fetches
 
   useEffect(() => {
     if (!user) return;
-    
+
     const now = Date.now();
     if (now - lastFetchRef.current < fetchCooldown) {
       // Use cached data if available
       return;
     }
-    
+
     lastFetchRef.current = now;
-    
+
     // Throttled wishlist fetch
     const fetchWishlistThrottled = debounce(() => {
       dispatch(fetchWishlist());
     }, 1000);
-    
+
     fetchWishlistThrottled();
-    
+
     return () => {
       fetchWishlistThrottled.cancel();
     };
@@ -115,7 +129,9 @@ function WishlistIndicator({ isMobile = false }) {
         variant="outline"
         size="default"
         className="w-full justify-start gap-3"
-        onClick={() => user ? navigate("/shop/wishlist") : navigate("/auth/login")}
+        onClick={() =>
+          user ? navigate("/shop/wishlist") : navigate("/auth/login")
+        }
         disabled={!user}
       >
         <Heart className="h-4 w-4" />
@@ -137,7 +153,9 @@ function WishlistIndicator({ isMobile = false }) {
       variant="ghost"
       size="icon"
       className="relative h-10 w-10 rounded-full hover:bg-pink-50 dark:hover:bg-pink-950/20 transition-colors group"
-      onClick={() => user ? navigate("/shop/wishlist") : navigate("/auth/login")}
+      onClick={() =>
+        user ? navigate("/shop/wishlist") : navigate("/auth/login")
+      }
       aria-label="Wishlist"
       disabled={isLoading}
     >
@@ -164,7 +182,7 @@ function WishlistIndicator({ isMobile = false }) {
 function MenuItem({ onNavigate, isMobile = false }) {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentCategory = searchParams.get('category');
+  const currentCategory = searchParams.get("category");
 
   const iconMap = {
     House: House,
@@ -179,13 +197,15 @@ function MenuItem({ onNavigate, isMobile = false }) {
   };
 
   return (
-    <nav className={cn(
-      "flex flex-col gap-0",
-      !isMobile && "md:flex-row md:items-center md:gap-2"
-    )}>
+    <nav
+      className={cn(
+        "flex flex-col gap-0",
+        !isMobile && "md:flex-row md:items-center md:gap-2"
+      )}
+    >
       {shopingViewHeaderMenuItems.map((menuItem) => {
         const IconComponent = iconMap[menuItem.icon] || House;
-        
+
         // Fix: Check if we're on shop/listing page and category matches
         let isActive = false;
         if (menuItem.id === "home") {
@@ -193,8 +213,9 @@ function MenuItem({ onNavigate, isMobile = false }) {
           isActive = location.pathname === "/shop/home";
         } else {
           // For category items, check if we're on /shop/listing and category matches
-          isActive = location.pathname === "/shop/listing" && 
-                     currentCategory === menuItem.id;
+          isActive =
+            location.pathname === "/shop/listing" &&
+            currentCategory === menuItem.id;
         }
 
         return (
@@ -204,8 +225,8 @@ function MenuItem({ onNavigate, isMobile = false }) {
               "text-sm font-medium transition-all duration-200 px-3 py-2.5 md:px-0 md:py-2",
               "rounded-lg md:rounded-md text-left md:text-center",
               "hover:bg-gradient-to-r hover:from-primary/5 hover:to-primary/10",
-              isActive 
-                ? "text-primary bg-gradient-to-r from-primary/10 to-primary/20 md:bg-transparent font-semibold" 
+              isActive
+                ? "text-primary bg-gradient-to-r from-primary/10 to-primary/20 md:bg-transparent font-semibold"
                 : "text-muted-foreground hover:text-primary",
               isMobile && "w-full",
               !isMobile && "px-3 mx-1"
@@ -213,10 +234,12 @@ function MenuItem({ onNavigate, isMobile = false }) {
             onClick={() => onNavigate(menuItem)}
           >
             <div className="flex items-center gap-2 md:gap-1">
-              <IconComponent className={cn(
-                "h-4 w-4 transition-transform",
-                isActive && "scale-110"
-              )} />
+              <IconComponent
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  isActive && "scale-110"
+                )}
+              />
               <span className="font-medium">{menuItem.label}</span>
               {isActive && (
                 <div className="ml-auto md:hidden">
@@ -224,7 +247,7 @@ function MenuItem({ onNavigate, isMobile = false }) {
                 </div>
               )}
             </div>
-            
+
             {isActive && !isMobile && (
               <div className="hidden md:block h-0.5 w-full bg-gradient-to-r from-primary via-primary/70 to-primary/40 rounded-full mt-1" />
             )}
@@ -244,8 +267,10 @@ function SearchComponent({ variant = "desktop" }) {
   const inputRef = useRef(null);
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  
-  const { recentSearches, popularSearches, searchQuery } = useSelector((state) => state.search);
+
+  const { recentSearches, popularSearches, searchQuery } = useSelector(
+    (state) => state.search
+  );
 
   useEffect(() => {
     dispatch(loadRecentSearches());
@@ -259,22 +284,23 @@ function SearchComponent({ variant = "desktop" }) {
       }
 
       setIsLoading(true);
-      
+
       // Use request manager for deduplication
-      requestManager.makeRequest(
-        `search-suggestions-${query}`,
-        () => dispatch(fetchSearchSuggestions(query)).unwrap(),
-        { cacheDuration: 10000 } // Cache suggestions for 10 seconds
-      )
-      .then((data) => {
-        setSuggestions(data.suggestions || []);
-      })
-      .catch(() => {
-        // Silently fail for rate limits
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      requestManager
+        .makeRequest(
+          `search-suggestions-${query}`,
+          () => dispatch(fetchSearchSuggestions(query)).unwrap(),
+          { cacheDuration: 10000 } // Cache suggestions for 10 seconds
+        )
+        .then((data) => {
+          setSuggestions(data.suggestions || []);
+        })
+        .catch(() => {
+          // Silently fail for rate limits
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
     }, 500), // Increased debounce time
     [dispatch]
   );
@@ -300,24 +326,24 @@ function SearchComponent({ variant = "desktop" }) {
 
   const handleSuggestionClick = (suggestion) => {
     let query = suggestion.text;
-    let category = '';
-    
-    if (suggestion.type === 'product') {
+    let category = "";
+
+    if (suggestion.type === "product") {
       query = suggestion.text;
       category = suggestion.category;
-    } else if (suggestion.type === 'category') {
-      query = '';
+    } else if (suggestion.type === "category") {
+      query = "";
       category = suggestion.category;
-    } else if (suggestion.type === 'brand') {
+    } else if (suggestion.type === "brand") {
       query = suggestion.text;
     }
-    
+
     dispatch(addRecentSearch(query || suggestion.text));
-    
+
     const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (category) params.set('category', category);
-    
+    if (query) params.set("q", query);
+    if (category) params.set("category", category);
+
     navigate(`/shop/search?${params.toString()}`);
     setSearchOpen(false);
     setLocalSearchQuery("");
@@ -372,7 +398,7 @@ function SearchComponent({ variant = "desktop" }) {
                   </form>
                 </div>
               </div>
-              
+
               {recentSearches.length > 0 && (
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
@@ -402,7 +428,7 @@ function SearchComponent({ variant = "desktop" }) {
                   </div>
                 </div>
               )}
-              
+
               {suggestions.length > 0 && (
                 <div className="mb-6">
                   <p className="text-sm font-medium mb-3">Suggestions</p>
@@ -424,15 +450,19 @@ function SearchComponent({ variant = "desktop" }) {
                   </div>
                 </div>
               )}
-              
+
               <div className="mt-6 space-y-3">
-                <p className="text-xs text-muted-foreground font-medium">Popular Categories</p>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Popular Categories
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {popularSearches.slice(0, 5).map((term) => (
                     <button
                       key={term}
                       onClick={() => {
-                        navigate(`/shop/listing?category=${encodeURIComponent(term)}`);
+                        navigate(
+                          `/shop/listing?category=${encodeURIComponent(term)}`
+                        );
                         setSearchOpen(false);
                       }}
                       className="px-3 py-2 bg-muted rounded-lg text-sm hover:bg-muted/80 transition-colors"
@@ -469,13 +499,15 @@ function SearchComponent({ variant = "desktop" }) {
           </div>
         )}
       </form>
-      
+
       {searchOpen && (localSearchQuery.trim() || recentSearches.length > 0) && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-background border rounded-xl shadow-2xl z-50 animate-in slide-in-from-top-5 duration-200">
           <div className="p-4">
             {localSearchQuery.trim() && suggestions.length > 0 && (
               <div className="mb-4">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Suggestions</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">
+                  Suggestions
+                </p>
                 {suggestions.map((suggestion) => (
                   <button
                     key={suggestion.id}
@@ -492,11 +524,13 @@ function SearchComponent({ variant = "desktop" }) {
                 ))}
               </div>
             )}
-            
+
             {recentSearches.length > 0 && !localSearchQuery.trim() && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-muted-foreground">Recent Searches</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Recent Searches
+                  </p>
                   <button
                     onClick={handleClearRecentSearches}
                     className="text-xs text-muted-foreground hover:text-primary"
@@ -522,11 +556,13 @@ function SearchComponent({ variant = "desktop" }) {
                 </div>
               </div>
             )}
-            
+
             {!localSearchQuery.trim() && recentSearches.length === 0 && (
               <div className="text-center py-4">
                 <Search className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Search for products</p>
+                <p className="text-sm text-muted-foreground">
+                  Search for products
+                </p>
               </div>
             )}
           </div>
@@ -541,34 +577,38 @@ function CartIndicator({ isMobile = false, onClick }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const { items = [], cartCount = 0, subtotal = 0 } = useSelector((state) => state.shopCart || {});
+  const {
+    items = [],
+    cartCount = 0,
+    subtotal = 0,
+  } = useSelector((state) => state.shopCart || {});
   const [openCartSheet, setOpenCartSheet] = useState(false);
   const lastFetchRef = useRef(0);
   const fetchCooldown = 10000; // 10 seconds between fetches
-  
+
   useEffect(() => {
     if (!user?.id) return;
-    
+
     const now = Date.now();
     if (now - lastFetchRef.current < fetchCooldown) {
       // Use cached data
       return;
     }
-    
+
     lastFetchRef.current = now;
-    
+
     // Throttled cart fetch
     const fetchCartThrottled = debounce(() => {
       dispatch(fetchCartItems(user.id));
     }, 1000);
-    
+
     fetchCartThrottled();
-    
+
     return () => {
       fetchCartThrottled.cancel();
     };
   }, [dispatch, user?.id]);
-  
+
   // Clear cart when user logs out
   useEffect(() => {
     if (!user) {
@@ -594,16 +634,16 @@ function CartIndicator({ isMobile = false, onClick }) {
           <span className="text-sm">Shopping Cart</span>
           {cartCount > 0 && (
             <Badge className="ml-auto bg-primary text-primary-foreground">
-              {cartCount} item{cartCount !== 1 ? 's' : ''}
+              {cartCount} item{cartCount !== 1 ? "s" : ""}
             </Badge>
           )}
         </Button>
-        
+
         {/* Mobile Cart Sheet - FIXED: Added SheetTitle */}
         <Sheet open={openCartSheet} onOpenChange={setOpenCartSheet}>
           <SheetContent side="right" className="w-full sm:max-w-md p-0">
             <SheetTitle className="sr-only">Shopping Cart</SheetTitle>
-            <UserCartWrapper 
+            <UserCartWrapper
               cartItems={items}
               setOpenCartSheet={setOpenCartSheet}
             />
@@ -635,11 +675,11 @@ function CartIndicator({ isMobile = false, onClick }) {
             )}
           </Button>
         </SheetTrigger>
-        
+
         {/* Desktop Cart Sheet - FIXED: Added SheetTitle */}
         <SheetContent side="right" className="w-full sm:max-w-md p-0">
           <SheetTitle className="sr-only">Shopping Cart</SheetTitle>
-          <UserCartWrapper 
+          <UserCartWrapper
             cartItems={items}
             setOpenCartSheet={setOpenCartSheet}
           />
@@ -655,10 +695,37 @@ function UserMenu() {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const { wishlistCount } = useSelector((state) => state.wishlist);
+  const { orders = [], orderCount = 0, isloading: ordersLoading } = useSelector((state) => state.shopOrder); // FIXED: Get orders from Redux
   const [openLogoutDialog, setOpenLogoutDialog] = useState(false);
-  const [darkMode, setDarkMode] = useState(
-    () => document.documentElement.classList.contains("dark")
+  const [darkMode, setDarkMode] = useState(() =>
+    document.documentElement.classList.contains("dark")
   );
+  const lastFetchRef = useRef(0);
+  const fetchCooldown = 30000; // 30 seconds between fetches
+
+  // Fetch orders when user logs in
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const now = Date.now();
+    if (now - lastFetchRef.current < fetchCooldown) {
+      // Use cached data if available
+      return;
+    }
+
+    lastFetchRef.current = now;
+
+    // Throttled orders fetch
+    const fetchOrdersThrottled = debounce(() => {
+      dispatch(getAllOrdersByUserId(user.id));
+    }, 1000);
+
+    fetchOrdersThrottled();
+
+    return () => {
+      fetchOrdersThrottled.cancel();
+    };
+  }, [dispatch, user?.id]);
 
   const toggleTheme = useCallback(() => {
     const isDark = !document.documentElement.classList.contains("dark");
@@ -679,6 +746,9 @@ function UserMenu() {
         navigate("/shop/home");
       });
   }, [dispatch, navigate]);
+
+  // Calculate actual order count from orders array or orderCount
+  const actualOrderCount = orders.length || orderCount || 0;
 
   if (!user) {
     return (
@@ -724,14 +794,16 @@ function UserMenu() {
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold truncate">{user?.userName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user?.email}
+                  </p>
                 </div>
               </div>
             </div>
           </DropdownMenuLabel>
-          
+
           <DropdownMenuSeparator />
-          
+
           <DropdownMenuGroup>
             <DropdownMenuItem
               onClick={() => navigate("/shop/account")}
@@ -740,14 +812,22 @@ function UserMenu() {
               <UserCog className="h-4 w-4" />
               Account Settings
             </DropdownMenuItem>
-            
+
             <DropdownMenuItem
-              onClick={() => navigate("/shop/orders")}
+              onClick={() => navigate("/shop/account")}
               className="cursor-pointer gap-2 py-3"
             >
               <Package className="h-4 w-4" />
               My Orders
-              <Badge variant="secondary" className="ml-auto">3</Badge>
+              <Badge variant="secondary" className="ml-auto">
+                {ordersLoading ? (
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                ) : actualOrderCount > 99 ? (
+                  "99+"
+                ) : (
+                  actualOrderCount
+                )}
+              </Badge>
             </DropdownMenuItem>
             
             <DropdownMenuItem
@@ -760,7 +840,7 @@ function UserMenu() {
                 {wishlistCount || 0}
               </Badge>
             </DropdownMenuItem>
-            
+
             <DropdownMenuItem
               onClick={() => navigate("/shop/gift-cards")}
               className="cursor-pointer gap-2 py-3"
@@ -769,9 +849,9 @@ function UserMenu() {
               Gift Cards
             </DropdownMenuItem>
           </DropdownMenuGroup>
-          
+
           <DropdownMenuSeparator />
-          
+
           <DropdownMenuGroup>
             <DropdownMenuItem
               onClick={() => navigate("/shop/settings")}
@@ -780,7 +860,7 @@ function UserMenu() {
               <Settings className="h-4 w-4" />
               Settings
             </DropdownMenuItem>
-            
+
             <DropdownMenuItem
               onClick={() => navigate("/shop/help")}
               className="cursor-pointer gap-2 py-3"
@@ -788,7 +868,7 @@ function UserMenu() {
               <HelpCircle className="h-4 w-4" />
               Help & Support
             </DropdownMenuItem>
-            
+
             <DropdownMenuItem
               onClick={toggleTheme}
               className="cursor-pointer gap-2 py-3"
@@ -806,10 +886,10 @@ function UserMenu() {
               )}
             </DropdownMenuItem>
           </DropdownMenuGroup>
-          
+
           <DropdownMenuSeparator />
-          
-          <DropdownMenuItem 
+
+          <DropdownMenuItem
             onClick={() => setOpenLogoutDialog(true)}
             className="cursor-pointer gap-2 py-3 text-red-600 focus:text-red-600 focus:bg-red-50"
           >
@@ -835,13 +915,14 @@ function UserMenu() {
               </div>
             </div>
           </DialogHeader>
-          
+
           <div className="py-4">
             <p className="text-sm text-muted-foreground">
-              You'll need to sign in again to access your account, orders, and wishlist.
+              You'll need to sign in again to access your account, orders, and
+              wishlist.
             </p>
           </div>
-          
+
           <DialogFooter className="flex gap-3">
             <Button
               variant="outline"
@@ -872,46 +953,54 @@ function ShoppingHeader() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const currentCategory = searchParams.get('category');
+  const currentCategory = searchParams.get("category");
 
   useEffect(() => {
     setIsMounted(true);
-    
+
     const handleScroll = () => {
       setScrolled(window.scrollY > 10);
     };
-    
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleNavigate = useCallback((menuItem) => {
-    sessionStorage.removeItem("shop-filters");
-    
-    if (menuItem.id !== "home") {
-      sessionStorage.setItem("shop-filters", JSON.stringify({ category: [menuItem.id] }));
-      const params = new URLSearchParams();
-      params.set("category", menuItem.id);
-      navigate(`/shop/listing?${params.toString()}`);
-    } else {
-      navigate("/shop/home");
-    }
-    
-    setMobileOpen(false);
-  }, [navigate]);
+  const handleNavigate = useCallback(
+    (menuItem) => {
+      sessionStorage.removeItem("shop-filters");
+
+      if (menuItem.id !== "home") {
+        sessionStorage.setItem(
+          "shop-filters",
+          JSON.stringify({ category: [menuItem.id] })
+        );
+        const params = new URLSearchParams();
+        params.set("category", menuItem.id);
+        navigate(`/shop/listing?${params.toString()}`);
+      } else {
+        navigate("/shop/home");
+      }
+
+      setMobileOpen(false);
+    },
+    [navigate]
+  );
 
   const isHomePage = location.pathname === "/shop/home";
 
   if (!isMounted) return null;
 
   return (
-    <header className={cn(
-      "sticky top-0 z-50 w-full border-b transition-all duration-300",
-      scrolled 
-        ? "bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/60 shadow-lg" 
-        : "bg-background",
-      isHomePage && scrolled ? "border-b" : "border-transparent"
-    )}>
+    <header
+      className={cn(
+        "sticky top-0 z-50 w-full border-b transition-all duration-300",
+        scrolled
+          ? "bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/60 shadow-lg"
+          : "bg-background",
+        isHomePage && scrolled ? "border-b" : "border-transparent"
+      )}
+    >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-4">
@@ -926,11 +1015,16 @@ function ShoppingHeader() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              
+
               {/* Main Mobile Menu Sheet - FIXED: Added SheetTitle */}
-              <SheetContent side="left" className="w-full sm:max-w-sm p-0 overflow-y-auto">
-                <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
-                
+              <SheetContent
+                side="left"
+                className="w-full sm:max-w-sm p-0 overflow-y-auto"
+              >
+                <SheetTitle className="sr-only">
+                  Mobile Navigation Menu
+                </SheetTitle>
+
                 <div className="sticky top-0 z-10 bg-background border-b px-4 py-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -939,7 +1033,9 @@ function ShoppingHeader() {
                       </div>
                       <div>
                         <p className="font-bold text-lg">adeeB</p>
-                        <p className="text-xs text-muted-foreground">Luxury Perfumes</p>
+                        <p className="text-xs text-muted-foreground">
+                          Luxury Perfumes
+                        </p>
                       </div>
                     </div>
                     <Button
@@ -951,40 +1047,55 @@ function ShoppingHeader() {
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="p-4 space-y-6">
                   <div className="space-y-1">
                     <MenuItem onNavigate={handleNavigate} isMobile />
                   </div>
-                  
+
                   <div className="pt-6 border-t">
                     <div className="space-y-3">
                       <SearchComponent variant="mobile" />
                       <WishlistIndicator isMobile />
-                      <CartIndicator 
-                        isMobile 
-                        onClick={() => setMobileOpen(false)} 
+                      <CartIndicator
+                        isMobile
+                        onClick={() => setMobileOpen(false)}
                       />
                       <UserMenu />
                     </div>
                   </div>
-                  
+
                   <div className="pt-6 border-t">
                     <div className="text-center text-sm text-muted-foreground space-y-2">
                       <p>© {new Date().getFullYear()} adeeB Perfumes</p>
                       <div className="flex flex-wrap justify-center gap-3">
-                        <a href="#" className="hover:text-primary transition-colors">Privacy</a>
-                        <a href="#" className="hover:text-primary transition-colors">Terms</a>
-                        <a href="#" className="hover:text-primary transition-colors">Contact</a>
+                        <a
+                          href="#"
+                          className="hover:text-primary transition-colors"
+                        >
+                          Privacy
+                        </a>
+                        <a
+                          href="#"
+                          className="hover:text-primary transition-colors"
+                        >
+                          Terms
+                        </a>
+                        <a
+                          href="#"
+                          className="hover:text-primary transition-colors"
+                        >
+                          Contact
+                        </a>
                       </div>
                     </div>
                   </div>
                 </div>
               </SheetContent>
             </Sheet>
-            
-            <Link 
-              to="/shop/home" 
+
+            <Link
+              to="/shop/home"
               className="flex items-center gap-2.5 group flex-shrink-0"
             >
               <div className="relative">
@@ -1002,19 +1113,19 @@ function ShoppingHeader() {
                 </span>
               </div>
             </Link>
-            
+
             <div className="hidden lg:flex items-center gap-1 ml-8">
               <MenuItem onNavigate={handleNavigate} />
             </div>
           </div>
-          
+
           <div className="hidden lg:flex items-center gap-4">
             <SearchComponent variant="desktop" />
             <WishlistIndicator />
             <CartIndicator />
             <UserMenu />
           </div>
-          
+
           <div className="flex items-center gap-2 lg:hidden">
             <SearchComponent variant="mobile" />
             <WishlistIndicator />
@@ -1022,15 +1133,17 @@ function ShoppingHeader() {
           </div>
         </div>
       </div>
-      
-      <div className={cn(
-        "lg:hidden overflow-x-auto transition-all duration-300",
-        scrolled ? "bg-background border-t" : "bg-muted/30"
-      )}>
+
+      <div
+        className={cn(
+          "lg:hidden overflow-x-auto transition-all duration-300",
+          scrolled ? "bg-background border-t" : "bg-muted/30"
+        )}
+      >
         <div className="container mx-auto px-4">
           <div className="flex items-center gap-2 py-2 min-w-max">
             {shopingViewHeaderMenuItems
-              .filter(item => item.id !== "home")
+              .filter((item) => item.id !== "home")
               .map((menuItem) => {
                 const iconMap = {
                   House: House,
@@ -1044,18 +1157,19 @@ function ShoppingHeader() {
                   Sparkle: Sparkle,
                 };
                 const IconComponent = iconMap[menuItem.icon] || House;
-                
+
                 // Fix: Check if category matches for mobile too
-                const isActive = location.pathname === "/shop/listing" && 
-                               currentCategory === menuItem.id;
-                
+                const isActive =
+                  location.pathname === "/shop/listing" &&
+                  currentCategory === menuItem.id;
+
                 return (
                   <button
                     key={menuItem.id}
                     className={cn(
                       "text-xs font-medium whitespace-nowrap px-3 py-1.5 rounded-full transition-colors flex items-center gap-1",
-                      isActive 
-                        ? "bg-primary text-primary-foreground border-primary" 
+                      isActive
+                        ? "bg-primary text-primary-foreground border-primary"
                         : "bg-background border hover:bg-primary/10 hover:border-primary/30"
                     )}
                     onClick={() => handleNavigate(menuItem)}
