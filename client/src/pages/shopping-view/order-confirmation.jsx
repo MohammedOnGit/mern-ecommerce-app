@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle, ShoppingBag, Home, Package, Mail, Truck, Clock, AlertCircle, CreditCard } from "lucide-react";
 import { clearCart } from "@/store/shop/cart-slice";
 import { checkAuthStatus } from "@/store/auth-slice";
+import { getOrderDetails } from "@/store/shop/order-slice"; // IMPORT FROM ORDER SLICE
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -16,6 +17,7 @@ function OrderConfirmation() {
   const dispatch = useDispatch();
   
   const { user, isAuthenticated } = useSelector((state) => state.auth);
+  const { orderDetails, isloading } = useSelector((state) => state.shopOrder); // GET ORDER FROM REDUX
   
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,7 @@ function OrderConfirmation() {
 
   // Step 2: Fetch order details
   useEffect(() => {
-    if (sessionRestored) {
+    if (sessionRestored && orderId) {
       fetchOrderDetails();
     }
   }, [orderId, sessionRestored]);
@@ -85,32 +87,31 @@ function OrderConfirmation() {
         return;
       }
       
-      // If we have an orderId, fetch from API
+      // If we have an orderId, fetch from API via Redux
       if (orderId) {
-        const token = localStorage.getItem('token') || urlToken;
+        console.log("Fetching order details for:", orderId);
         
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/shop/orders/${orderId}`,
-          {
-            withCredentials: true,
-            headers: token ? { 
-              'Authorization': `Bearer ${token}`,
-              'Cache-Control': 'no-cache'
-            } : {}
+        // Use Redux thunk to fetch order details
+        const result = await dispatch(getOrderDetails(orderId));
+        
+        if (result.meta.requestStatus === 'fulfilled') {
+          const orderData = result.payload?.order;
+          if (orderData) {
+            setOrder(orderData);
+            
+            // Save order to localStorage for persistence
+            localStorage.setItem('lastOrder', JSON.stringify({
+              order: orderData,
+              timestamp: Date.now(),
+              restored: true
+            }));
+            
+            console.log("Order loaded successfully:", orderData._id);
+          } else {
+            throw new Error("Order data not found in response");
           }
-        );
-        
-        if (response.data.success) {
-          setOrder(response.data.order);
-          
-          // Save order to localStorage for persistence
-          localStorage.setItem('lastOrder', JSON.stringify({
-            order: response.data.order,
-            timestamp: Date.now(),
-            restored: true
-          }));
         } else {
-          throw new Error("Failed to fetch order details");
+          throw new Error(result.error?.message || "Failed to fetch order");
         }
       } else {
         // Try to load last order from localStorage
@@ -125,27 +126,14 @@ function OrderConfirmation() {
       }
     } catch (error) {
       console.error("Error fetching order:", error);
-      
-      // Try without auth token
-      try {
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/shop/orders/${orderId}`
-        );
-        if (response.data.success) {
-          setOrder(response.data.order);
-        } else {
-          toast.error("Could not load order details");
-        }
-      } catch (secondError) {
-        toast.error("Unable to load order information");
-      }
+      toast.error("Unable to load order information");
     } finally {
       setLoading(false);
     }
   };
 
   // Handle loading state
-  if (loading) {
+  if (loading || isloading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center space-y-4">
@@ -230,15 +218,15 @@ function OrderConfirmation() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-600">Items Total</span>
-                    <span className="font-medium">GHC {order.subtotal?.toFixed(2) || order.totalAmount?.toFixed(2)}</span>
+                    <span className="font-medium">GHC {(order.subtotal || order.totalAmount || 0).toFixed(2)}</span>
                   </div>
-                  {order.shippingFee > 0 && (
+                  {(order.shippingFee || 0) > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">Shipping</span>
                       <span className="font-medium">GHC {order.shippingFee.toFixed(2)}</span>
                     </div>
                   )}
-                  {order.tax > 0 && (
+                  {(order.tax || 0) > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600">Tax</span>
                       <span className="font-medium">GHC {order.tax.toFixed(2)}</span>
@@ -246,7 +234,7 @@ function OrderConfirmation() {
                   )}
                   <div className="flex justify-between items-center pt-3 border-t font-bold text-lg">
                     <span>Total Amount</span>
-                    <span>GHC {order.totalAmount?.toFixed(2)}</span>
+                    <span>GHC {(order.totalAmount || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -259,8 +247,8 @@ function OrderConfirmation() {
                     Shipping Details
                   </h3>
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="font-medium text-gray-800">{order.addressInfo.address}</p>
-                    <p className="text-gray-600">{order.addressInfo.city}</p>
+                    <p className="font-medium text-gray-800">{order.addressInfo.address || 'Address not specified'}</p>
+                    <p className="text-gray-600">{order.addressInfo.city || 'City not specified'}</p>
                     {order.addressInfo.phone && (
                       <p className="text-gray-600 mt-1">Phone: {order.addressInfo.phone}</p>
                     )}
@@ -288,11 +276,11 @@ function OrderConfirmation() {
                         <div className="flex-1">
                           <p className="font-medium text-gray-800">{item.title}</p>
                           <p className="text-sm text-gray-600">
-                            GHC {item.price?.toFixed(2)} × {item.quantity}
+                            GHC {item.price?.toFixed(2) || '0.00'} × {item.quantity || 1}
                           </p>
                         </div>
                         <div className="font-medium text-gray-800">
-                          GHC {(item.price * item.quantity).toFixed(2)}
+                          GHC {((item.price || 0) * (item.quantity || 1)).toFixed(2)}
                         </div>
                       </div>
                     ))}

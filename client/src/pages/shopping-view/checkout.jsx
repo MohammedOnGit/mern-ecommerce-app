@@ -1,4 +1,3 @@
-// pages/shopping-view/checkout.jsx 
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
@@ -6,7 +5,7 @@ import malikImg from "@/assets/ban/malik.webp";
 import Address from "@/components/shoping-view/address";
 import UserCartItemsContent from "@/components/shoping-view/cart-items-content";
 import { fetchCartItems } from "@/store/shop/cart-slice";
-import { createNewOrder } from "@/store/shop/order-slice";
+import { createNewOrder } from "@/store/shop/order-slice"; // FIXED: Changed to createNewOrder
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, AlertCircle } from "lucide-react";
@@ -134,7 +133,7 @@ function ShoppingCheckout() {
 
       console.log("📦 Sending order data to backend:", JSON.stringify(orderData, null, 2));
 
-      // Dispatch Redux action
+      // FIXED: Use createNewOrder instead of getAllOrdersByUserId
       const result = await dispatch(createNewOrder(orderData)).unwrap();
       
       console.log("✅ Order creation result:", result);

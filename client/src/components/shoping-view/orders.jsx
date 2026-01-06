@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-} from "../ui/card";
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -14,10 +14,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../ui/table";
-import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
-import { Dialog, DialogContent } from "../ui/dialog";
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ShoppingOrderDetailsView from "./order-details";
 import {
   Search,
@@ -32,22 +32,30 @@ import {
   ChevronRight,
   Calendar,
   CreditCard,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
-import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Separator } from "../ui/separator";
+import { Separator } from "@/components/ui/separator";
+import { useSelector, useDispatch } from "react-redux";
+import { getAllOrdersByUserId } from "@/store/shop/order-slice";
+import { toast } from "sonner";
 
 const statusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-800", icon: Clock },
   processing: { label: "Processing", color: "bg-blue-100 text-blue-800", icon: Package },
+  confirmed: { label: "Confirmed", color: "bg-purple-100 text-purple-800", icon: Package },
   shipping: { label: "Shipping", color: "bg-purple-100 text-purple-800", icon: Truck },
   delivered: { label: "Delivered", color: "bg-green-100 text-green-800", icon: CheckCircle },
-  rejected: { label: "Cancelled", color: "bg-red-100 text-red-800", icon: XCircle },
+  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-800", icon: XCircle },
+  failed: { label: "Failed", color: "bg-red-100 text-red-800", icon: XCircle },
 };
 
 function StatusBadge({ status }) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] || statusConfig.pending;
   const Icon = config.icon;
   return (
     <Badge className={cn("gap-1.5", config.color)}>
@@ -62,29 +70,206 @@ function ShoppingOrders() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const { orders, orderDetails, isloading, error } = useSelector((state) => state.shopOrder);
 
-  const orders = [
-    { id: "ORD-001", date: "12 Dec 2025", status: "processing", total: 450.0, items: 2, payment: "Mobile Money", deliveryDate: "18-22 Dec 2025" },
-    { id: "ORD-002", date: "10 Dec 2025", status: "delivered", total: 890.0, items: 3, payment: "Credit Card", deliveryDate: "15 Dec 2025" },
-    { id: "ORD-003", date: "08 Dec 2025", status: "pending", total: 220.0, items: 1, payment: "Cash on Delivery", deliveryDate: "Pending" },
-    { id: "ORD-004", date: "05 Dec 2025", status: "shipping", total: 670.0, items: 4, payment: "Bank Transfer", deliveryDate: "10-12 Dec 2025" },
-    { id: "ORD-005", date: "01 Dec 2025", status: "rejected", total: 350.0, items: 2, payment: "Mobile Money", deliveryDate: "Cancelled" },
-  ];
+  // Debug: Log user object to see what properties are available
+  useEffect(() => {
+    console.log("🛒 DEBUG User object:", user);
+    console.log("🛒 DEBUG User ID property:", user?.id);
+    console.log("🛒 DEBUG User _ID property:", user?._id);
+    console.log("🛒 DEBUG User userId property:", user?.userId);
+  }, [user]);
 
+  const formattedOrders = useMemo(() => {
+    if (!Array.isArray(orders)) {
+      return [];
+    }
+    
+    return orders.map(order => ({
+      id: order._id,
+      orderNumber: order.orderNumber || `ORD-${order._id?.slice(-6)?.toUpperCase() || 'XXXXXX'}`,
+      date: order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date not available',
+      status: order.orderStatus || order.paymentStatus || 'pending',
+      total: order.totalAmount || 0,
+      items: order.cartItems?.length || 0,
+      payment: order.paymentMethod === 'paystack' ? 'Mobile Money/Card' : order.paymentMethod || 'Not specified',
+      deliveryDate: 'Pending',
+      rawData: order
+    }));
+  }, [orders]);
+
+  // Add filteredOrders calculation
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const matchesSearch =
-        order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.payment.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!formattedOrders.length) return [];
+    
+    return formattedOrders.filter(order => {
+      const matchesSearch = 
+        order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.payment.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.id.toLowerCase().includes(searchQuery.toLowerCase());
+      
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      
       return matchesSearch && matchesStatus;
     });
-  }, [orders, searchQuery, statusFilter]);
+  }, [formattedOrders, searchQuery, statusFilter]);
+
+  useEffect(() => {
+    // Try to get the correct user ID - check both possible properties
+    const userId = getUserId();
+    if (userId) {
+      fetchOrders(userId);
+    }
+  }, [user]);
+
+  // Helper function to get the correct user ID
+  const getUserId = () => {
+    // Check all possible user ID properties
+    return user?.id || user?._id || user?.userId;
+  };
+
+  const fetchOrders = async (userId) => {
+    if (!userId) {
+      console.error("🛒 No user ID found for fetching orders");
+      toast.error("Unable to identify user");
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      console.log("🛒 Fetching orders for user ID:", userId);
+      console.log("🛒 User ID type:", typeof userId);
+      
+      const result = await dispatch(getAllOrdersByUserId(userId));
+      
+      if (result.meta.requestStatus === 'fulfilled') {
+        if (result.payload?.count > 0) {
+          toast.success(`Loaded ${result.payload.count} orders`);
+        } else {
+          toast.info("No orders found");
+        }
+      } else if (result.meta.requestStatus === 'rejected') {
+        console.error("🛒 Failed to fetch orders:", result.error);
+        toast.error(result.error?.message || "Failed to load orders");
+      }
+    } catch (err) {
+      console.error("🛒 Failed to fetch orders:", err);
+      toast.error(err.message || "Failed to load orders");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const openOrderDetails = (order) => {
-    setSelectedOrder(order);
+    setSelectedOrder(order.rawData);
     setIsDetailsOpen(true);
   };
+
+  const handleRefresh = () => {
+    const userId = getUserId();
+    if (userId) {
+      fetchOrders(userId);
+    }
+  };
+
+  // Debug button to test different user IDs
+  const testUserIds = () => {
+    console.log("🔍 Testing all possible user ID properties:");
+    console.log("user.id:", user?.id);
+    console.log("user._id:", user?._id);
+    console.log("user.userId:", user?.userId);
+    
+    // Try fetching with each possible ID
+    const idsToTest = [user?.id, user?._id, user?.userId].filter(Boolean);
+    console.log("IDs to test:", idsToTest);
+    
+    // Try the first available ID
+    if (idsToTest.length > 0) {
+      fetchOrders(idsToTest[0]);
+    }
+  };
+
+  if (isloading && !isRefreshing) {
+    return (
+      <Card className="border-0 shadow-sm">
+        <CardContent className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading your orders...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error && formattedOrders.length === 0) {
+    return (
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Order History</CardTitle>
+          <CardDescription>Track and manage all your orders in one place</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center gap-4 text-center max-w-md">
+            <AlertCircle className="h-12 w-12 text-destructive" />
+            <div>
+              <p className="font-medium text-lg">Failed to load orders</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {error || "An unexpected error occurred. Please try again."}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleRefresh} disabled={isRefreshing} className="gap-2">
+                {isRefreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Try Again
+              </Button>
+              <Button variant="outline" onClick={testUserIds}>
+                Debug User ID
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (formattedOrders.length === 0 && !isloading) {
+    return (
+      <Card className="border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Order History</CardTitle>
+          <CardDescription>Track and manage all your orders in one place</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center gap-4 text-center max-w-md">
+            <Package className="h-12 w-12 text-muted-foreground" />
+            <div>
+              <p className="font-medium text-lg">No orders yet</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                You haven't placed any orders yet. Start shopping to see your order history here.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => window.location.href = '/shop'}>
+                Browse Products
+              </Button>
+              <Button variant="outline" onClick={testUserIds}>
+                Debug
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <>
@@ -93,9 +278,25 @@ function ShoppingOrders() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <CardTitle className="text-2xl font-bold">Order History</CardTitle>
-              <CardDescription>Track and manage all your orders in one place</CardDescription>
+              <CardDescription>
+                {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found
+              </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Refresh
+              </Button>
               <Button variant="outline" size="sm" className="gap-2">
                 <Download className="h-4 w-4" /> Export
               </Button>
@@ -104,12 +305,19 @@ function ShoppingOrders() {
         </CardHeader>
 
         <CardContent className="pb-6">
+          {isRefreshing && (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
+              <span className="text-sm text-muted-foreground">Updating orders...</span>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search orders by ID or payment method..."
+                placeholder="Search orders by ID, order number or payment method..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -137,7 +345,7 @@ function ShoppingOrders() {
             </Select>
           </div>
 
-          {/* Table View */}
+          {/* Desktop Table View */}
           <div className="hidden lg:block rounded-lg border overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
@@ -146,7 +354,7 @@ function ShoppingOrders() {
                 </TableCaption>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Order ID</TableHead>
+                    <TableHead>Order Number</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Items</TableHead>
@@ -158,19 +366,32 @@ function ShoppingOrders() {
                 <TableBody>
                   {filteredOrders.map(order => (
                     <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="font-mono text-sm">{order.id}</TableCell>
-                      <TableCell className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-3 w-3 text-muted-foreground" /> {order.date}
+                      <TableCell className="font-mono text-sm font-medium">
+                        {order.orderNumber}
                       </TableCell>
-                      <TableCell><StatusBadge status={order.status} /></TableCell>
+                      <TableCell className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-3 w-3 text-muted-foreground" /> 
+                        {order.date}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={order.status} />
+                      </TableCell>
                       <TableCell className="text-sm">{order.items} item{order.items !== 1 ? 's' : ''}</TableCell>
                       <TableCell className="flex items-center gap-2 text-sm">
-                        <CreditCard className="h-3 w-3 text-muted-foreground" /> {order.payment}
+                        <CreditCard className="h-3 w-3 text-muted-foreground" /> 
+                        {order.payment}
                       </TableCell>
                       <TableCell className="text-right font-bold">GHC {order.total.toFixed(2)}</TableCell>
                       <TableCell className="text-center">
-                        <Button size="sm" variant="ghost" className="gap-2" onClick={() => openOrderDetails(order)}>
-                          <Eye className="h-4 w-4" /> View <ChevronRight className="h-3 w-3" />
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="gap-2 hover:bg-primary/10" 
+                          onClick={() => openOrderDetails(order)}
+                        >
+                          <Eye className="h-4 w-4" /> 
+                          View 
+                          <ChevronRight className="h-3 w-3" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -183,11 +404,11 @@ function ShoppingOrders() {
           {/* Mobile Cards */}
           <div className="lg:hidden space-y-4 mt-6">
             {filteredOrders.map(order => (
-              <Card key={order.id}>
+              <Card key={order.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <div className="font-mono font-bold text-lg">{order.id}</div>
+                      <div className="font-mono font-bold text-lg">{order.orderNumber}</div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                         <Calendar className="h-3 w-3" /> {order.date}
                       </div>
@@ -207,16 +428,16 @@ function ShoppingOrders() {
                       <div className="font-medium">{order.payment}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Delivery</div>
-                      <div className="font-medium">{order.deliveryDate}</div>
-                    </div>
-                    <div>
                       <div className="text-muted-foreground">Total</div>
                       <div className="font-bold text-lg">GHC {order.total.toFixed(2)}</div>
                     </div>
                   </div>
 
-                  <Button className="w-full mt-4 gap-2" onClick={() => openOrderDetails(order)}>
+                  <Button 
+                    className="w-full mt-4 gap-2" 
+                    onClick={() => openOrderDetails(order)}
+                    variant="outline"
+                  >
                     <Eye className="h-4 w-4" /> View Order Details
                   </Button>
                 </CardContent>
@@ -229,7 +450,7 @@ function ShoppingOrders() {
       {/* Order Details Dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-4xl p-0">
-          {selectedOrder && <ShoppingOrderDetailsView order={selectedOrder} />}
+          {selectedOrder && <ShoppingOrderDetailsView order={selectedOrder} onClose={() => setIsDetailsOpen(false)} />}
         </DialogContent>
       </Dialog>
     </>
