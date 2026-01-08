@@ -35,6 +35,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,15 +48,18 @@ import { toast } from "sonner";
 const statusConfig = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-800", icon: Clock },
   processing: { label: "Processing", color: "bg-blue-100 text-blue-800", icon: Package },
-  confirmed: { label: "Confirmed", color: "bg-purple-100 text-purple-800", icon: Package },
-  shipping: { label: "Shipping", color: "bg-purple-100 text-purple-800", icon: Truck },
+  confirmed: { label: "Confirmed", color: "bg-purple-100 text-purple-800", icon: ShieldCheck },
+  shipping: { label: "On the Way", color: "bg-purple-100 text-purple-800", icon: Truck },
+  shipped: { label: "On the Way", color: "bg-purple-100 text-purple-800", icon: Truck }, // Alias for shipping
   delivered: { label: "Delivered", color: "bg-green-100 text-green-800", icon: CheckCircle },
   cancelled: { label: "Cancelled", color: "bg-red-100 text-red-800", icon: XCircle },
   failed: { label: "Failed", color: "bg-red-100 text-red-800", icon: XCircle },
 };
 
 function StatusBadge({ status }) {
-  const config = statusConfig[status] || statusConfig.pending;
+  // Normalize status: map "shipped" to "shipping" for consistent display
+  const normalizedStatus = status === "shipped" ? "shipping" : status;
+  const config = statusConfig[normalizedStatus] || statusConfig.pending;
   const Icon = config.icon;
   return (
     <Badge className={cn("gap-1.5", config.color)}>
@@ -76,7 +80,6 @@ function ShoppingOrders() {
   const { user } = useSelector((state) => state.auth);
   const { orders, orderDetails, isloading, error } = useSelector((state) => state.shopOrder);
 
-  // Debug: Log user object to see what properties are available
   useEffect(() => {
     console.log("🛒 DEBUG User object:", user);
     console.log("🛒 DEBUG User ID property:", user?.id);
@@ -102,7 +105,6 @@ function ShoppingOrders() {
     }));
   }, [orders]);
 
-  // Add filteredOrders calculation
   const filteredOrders = useMemo(() => {
     if (!formattedOrders.length) return [];
     
@@ -112,23 +114,30 @@ function ShoppingOrders() {
         order.payment.toLowerCase().includes(searchQuery.toLowerCase()) ||
         order.id.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      // Handle status filter for both "shipping" and "shipped"
+      let matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      
+      // If filtering by "shipping", also include "shipped" orders
+      if (statusFilter === "shipping" && order.status === "shipped") {
+        matchesStatus = true;
+      }
+      // If filtering by "shipped", also include "shipping" orders
+      if (statusFilter === "shipped" && order.status === "shipping") {
+        matchesStatus = true;
+      }
       
       return matchesSearch && matchesStatus;
     });
   }, [formattedOrders, searchQuery, statusFilter]);
 
   useEffect(() => {
-    // Try to get the correct user ID - check both possible properties
     const userId = getUserId();
     if (userId) {
       fetchOrders(userId);
     }
   }, [user]);
 
-  // Helper function to get the correct user ID
   const getUserId = () => {
-    // Check all possible user ID properties
     return user?.id || user?._id || user?.userId;
   };
 
@@ -142,7 +151,6 @@ function ShoppingOrders() {
     setIsRefreshing(true);
     try {
       console.log("🛒 Fetching orders for user ID:", userId);
-      console.log("🛒 User ID type:", typeof userId);
       
       const result = await dispatch(getAllOrdersByUserId(userId));
       
@@ -176,18 +184,15 @@ function ShoppingOrders() {
     }
   };
 
-  // Debug button to test different user IDs
   const testUserIds = () => {
     console.log("🔍 Testing all possible user ID properties:");
     console.log("user.id:", user?.id);
     console.log("user._id:", user?._id);
     console.log("user.userId:", user?.userId);
     
-    // Try fetching with each possible ID
     const idsToTest = [user?.id, user?._id, user?.userId].filter(Boolean);
     console.log("IDs to test:", idsToTest);
     
-    // Try the first available ID
     if (idsToTest.length > 0) {
       fetchOrders(idsToTest[0]);
     }
@@ -333,14 +338,42 @@ function ShoppingOrders() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                {Object.entries(statusConfig).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
-                    <div className="flex items-center gap-2">
-                      <config.icon className="h-3 w-3" />
-                      {config.label}
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectItem value="pending">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3 w-3" />
+                    Pending
+                  </div>
+                </SelectItem>
+                <SelectItem value="processing">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-3 w-3" />
+                    Processing
+                  </div>
+                </SelectItem>
+                <SelectItem value="confirmed">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-3 w-3" />
+                    Confirmed
+                  </div>
+                </SelectItem>
+                <SelectItem value="shipping">
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-3 w-3" />
+                    On the Way
+                  </div>
+                </SelectItem>
+                <SelectItem value="delivered">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-3 w-3" />
+                    Delivered
+                  </div>
+                </SelectItem>
+                <SelectItem value="cancelled">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-3 w-3" />
+                    Cancelled
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

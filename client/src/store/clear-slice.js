@@ -1,21 +1,22 @@
-// store/clear-slice.js 
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice } from "@reduxjs/toolkit";
+
+const initialState = {
+  cleared: false
+};
 
 const clearSlice = createSlice({
-  name: 'clear',
-  initialState: {},
+  name: "clear",
+  initialState,
   reducers: {
-    clearAllUserData: () => {
-      // ⚠️ WARNING: This should NOT clear auth data!
-      // This action should only clear non-auth user data
-      return {};
+    clearAllUserData: (state) => {
+      // This action is dispatched to trigger clearing in other reducers
+      state.cleared = !state.cleared; // Toggle to trigger
     },
-    clearNonAuthUserData: () => {
-      // NEW: Clear only non-authentication data
-      return {};
+    resetClearState: (state) => {
+      state.cleared = false;
     }
   }
 });
 
-export const { clearAllUserData, clearNonAuthUserData } = clearSlice.actions;
+export const { clearAllUserData, resetClearState } = clearSlice.actions;
 export default clearSlice.reducer;

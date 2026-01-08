@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Define API base URL - Use Vite's import.meta.env
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Define API base URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Create axios instance
 const axiosInstance = axios.create({
@@ -45,6 +45,9 @@ axiosInstance.interceptors.response.use(
           break;
         case 404:
           console.error('Not Found: Resource not found');
+          break;
+        case 429:
+          console.error('Rate Limited: Too many requests');
           break;
         case 500:
           console.error('Server Error: Please try again later');
