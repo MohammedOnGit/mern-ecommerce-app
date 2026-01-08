@@ -9,6 +9,7 @@ const rateLimit = require("express-rate-limit");
 // Import routes
 const authRouter = require("./routes/auth/auth-routes");
 const adminProductRoutes = require("./routes/admin/product-routes");
+const adminOrderRoutes = require("./routes/admin/order-routes"); // Fixed import
 const shopProductsRoutes = require("./routes/shop/products-routes");
 const shopCartRoutes = require("./routes/shop/cart-routes");
 const shopAddressRoutes = require("./routes/shop/address-routes");
@@ -22,17 +23,17 @@ const PORT = process.env.PORT || 5000;
 /* -------------------- MIDDLEWARE -------------------- */
 app.use(helmet());
 
-// CORS configuration - IMPORTANT: Allow Paystack redirects
+// CORS configuration
 app.use(
   cors({
     origin: [
       process.env.CORS_ORIGIN || "http://localhost:5173",
-      "https://checkout.paystack.com", // Allow Paystack checkout
-      "https://standard.paystack.com"  // Allow Paystack redirect
+      "https://checkout.paystack.com",
+      "https://standard.paystack.com"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
-    exposedHeaders: ['Set-Cookie'] // Expose cookies for cross-origin
+    exposedHeaders: ['Set-Cookie']
   })
 );
 
@@ -70,6 +71,7 @@ mongoose
 /* -------------------- ROUTES -------------------- */
 app.use("/api/auth", authRouter);
 app.use("/api/admin/products", adminProductRoutes);
+app.use("/api/admin/orders", adminOrderRoutes); // Fixed route
 app.use("/api/shop/products", shopProductsRoutes);
 app.use("/api/shop/cart", shopCartRoutes);
 app.use("/api/shop/address", shopAddressRoutes);
@@ -110,4 +112,6 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Rate limit: 500 requests per 15 minutes`);
   console.log(`🔗 CORS Origin: ${process.env.CORS_ORIGIN || "http://localhost:5173"}`);
+  console.log(`🏪 Admin order routes: /api/admin/orders`);
+  console.log(`🛒 Shop order routes: /api/shop/orders`);
 });

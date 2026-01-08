@@ -1,16 +1,23 @@
 const express = require("express");
-
-const { loginUser, registerUser, logoutUser, authMiddleware } = require('../../controllers/auth/auth-controller');
-
+const { 
+  loginUser, 
+  registerUser, 
+  logoutUser, 
+  authMiddleware,
+  getCurrentUser,
+  refreshAccessToken 
+} = require('../../controllers/auth/auth-controller');
 
 const router = express.Router();
 
+// Public routes (no authentication required)
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+router.post("/refresh-token", refreshAccessToken);
 router.post("/logout", logoutUser);
-router.get("/check-auth", authMiddleware, (req, res) => {
-  res.status(200).json({ success: true, message: "Authenticated", user: req.user });
-});
 
+// Protected routes (require authentication)
+router.get("/check-auth", authMiddleware, getCurrentUser);
+router.get("/me", authMiddleware, getCurrentUser); // Alternative endpoint
 
 module.exports = router;

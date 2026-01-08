@@ -1,21 +1,26 @@
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
-} from "../ui/dialog";
-import { Badge } from "../ui/badge";
-import { Separator } from "../ui/separator";
-import CommonForm from "../common/form";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { Button } from "../ui/button";
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   X,
   Package,
   User,
-  Users,
   Phone,
   MapPin,
   Calendar,
@@ -26,755 +31,717 @@ import {
   AlertCircle,
   Download,
   Printer,
-  Building2,
   MessageCircle,
   Mail,
   Bell,
   Shield,
   Edit,
-  Tag,
   Copy,
-  Filter,
-  MoreVertical,
-  ChevronDown,
-  Plus,
-  Minus,
-  ArrowLeft,
-  ChevronRight,
-  Clock,
-  Home,
-  CreditCard as CardIcon,
-  FileText,
   ShoppingBag,
+  Clock,
+  DollarSign,
+  ChevronLeft,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
-
-// Ghana regions with admin-specific data
-const ghanaRegions = {
-  Northern: {
-    color: "text-orange-600",
-    bg: "bg-orange-50",
-    deliveryDays: "3-5",
-    warehouse: "Tamale Hub",
-    manager: "Kwame Mensah",
-  },
-  "Greater Accra": {
-    color: "text-blue-600",
-    bg: "bg-blue-50",
-    deliveryDays: "1-2",
-    warehouse: "Accra Central",
-    manager: "Ama Serwaa",
-  },
-  Ashanti: {
-    color: "text-amber-600",
-    bg: "bg-amber-50",
-    deliveryDays: "2-3",
-    warehouse: "Kumasi Depot",
-    manager: "Kofi Asante",
-  },
-  Eastern: {
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-    deliveryDays: "2-4",
-    warehouse: "Koforidua Center",
-    manager: "Esi Boateng",
-  },
-  Western: {
-    color: "text-red-600",
-    bg: "bg-red-50",
-    deliveryDays: "3-5",
-    warehouse: "Takoradi Base",
-    manager: "Yaw Sarpong",
-  },
-};
+import { toast } from "sonner";
+import { updateOrderStatus, selectAdminOrderUpdating } from "@/store/admin/order-slice";
 
 const statusVariants = {
-  pending: { variant: "default", icon: AlertCircle, color: "bg-yellow-100 text-yellow-800" },
-  processing: { variant: "secondary", icon: PackageOpen, color: "bg-blue-100 text-blue-800" },
-  shipping: { variant: "outline", icon: Truck, color: "bg-purple-100 text-purple-800" },
-  delivered: { variant: "success", icon: CheckCircle, color: "bg-green-100 text-green-800" },
-  rejected: { variant: "destructive", icon: X, color: "bg-red-100 text-red-800" },
+  pending: {
+    variant: "default",
+    icon: AlertCircle,
+    color: "bg-yellow-50 text-yellow-800 border-yellow-200",
+    label: "Pending",
+    nextActions: ["processing", "cancelled"]
+  },
+  processing: {
+    variant: "secondary",
+    icon: PackageOpen,
+    color: "bg-blue-50 text-blue-800 border-blue-200",
+    label: "Processing",
+    nextActions: ["confirmed", "cancelled"]
+  },
+  confirmed: {
+    variant: "default",
+    icon: CheckCircle,
+    color: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    label: "Confirmed",
+    nextActions: ["shipped", "cancelled"]
+  },
+  shipped: {
+    variant: "outline",
+    icon: Truck,
+    color: "bg-purple-50 text-purple-800 border-purple-200",
+    label: "Shipped",
+    nextActions: ["delivered"]
+  },
+  delivered: {
+    variant: "success",
+    icon: CheckCircle,
+    color: "bg-green-50 text-green-800 border-green-200",
+    label: "Delivered",
+    nextActions: []
+  },
+  cancelled: {
+    variant: "destructive",
+    icon: X,
+    color: "bg-red-50 text-red-800 border-red-200",
+    label: "Cancelled",
+    nextActions: []
+  },
 };
 
-// Mobile-optimized tab component
-const MobileTabButton = ({ active, onClick, icon: Icon, label }) => (
-  <button
-    onClick={onClick}
-    className={`flex-1 flex flex-col items-center justify-center py-2.5 px-1 rounded-lg transition-all ${
-      active
-        ? "bg-primary/10 text-primary"
-        : "text-muted-foreground hover:text-foreground"
-    }`}
-  >
-    <Icon className="h-4 w-4 mb-1" />
-    <span className="text-xs font-medium">{label}</span>
-  </button>
-);
+function AdminOrderDetailsView({ order, onClose }) {
+  const dispatch = useDispatch();
+  const [isMobile, setIsMobile] = useState(false);
+  const isUpdating = useSelector(selectAdminOrderUpdating);
 
-function AdminOrderDetailsView() {
-  const [formData, setFormData] = useState({ status: "processing" });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState("details");
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  
-  React.useEffect(() => {
+  useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    console.log("Updated status:", formData.status);
-    setIsSubmitting(false);
+  // Current status config
+  const currentStatus = order?.orderStatus || "pending";
+  const statusConfig = statusVariants[currentStatus] || statusVariants.pending;
+  const StatusIcon = statusConfig.icon;
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-GH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "Invalid Date";
+    }
   };
 
-  const currentStatus = "processing";
-  const StatusIcon = statusVariants[currentStatus]?.icon || PackageOpen;
-  const customerRegion = "Northern";
-  const regionInfo = ghanaRegions[customerRegion] || {
-    color: "text-gray-600",
-    bg: "bg-gray-50",
-    deliveryDays: "3-5",
-    warehouse: "Regional Hub",
-    manager: "Regional Manager",
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return "GHS 0.00";
+    return new Intl.NumberFormat("en-GH", {
+      style: "currency",
+      currency: "GHS",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
   };
+
+  const handleStatusUpdate = async (newStatus) => {
+    // Get the order ID from the order object
+    const orderId = order?._id || order?.id;
+    
+    if (!orderId) {
+      console.error("Order ID not found. Order object:", order);
+      toast.error("Cannot update: Order ID not found");
+      return;
+    }
+    
+    console.log("🔄 Update button clicked - Order ID:", orderId, "New Status:", newStatus);
+    
+    try {
+      // Check if the order ID is valid (not undefined or null)
+      if (!orderId || orderId === "undefined" || orderId === "null") {
+        toast.error("Invalid order ID");
+        return;
+      }
+      
+      const result = await dispatch(updateOrderStatus({ 
+        orderId, 
+        status: newStatus 
+      }));
+      
+      if (result.meta.requestStatus === 'fulfilled') {
+        toast.success(`Order status updated to ${newStatus}`);
+      } else if (result.meta.requestStatus === 'rejected') {
+        console.error("Update rejected:", result.error);
+        toast.error(result.error?.message || "Failed to update order status");
+      }
+    } catch (error) {
+      console.error("Update error:", error);
+      toast.error(error?.message || "Failed to update order status");
+    }
+  };
+
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  };
+
+  const handlePrintInvoice = () => {
+    window.print();
+  };
+
+  const handleSendNotification = (type) => {
+    console.log(`Sending ${type} notification for order ${order?._id}`);
+    toast.info(`Sending ${type} notification...`);
+    // TODO: Implement notification API
+  };
+
+  const getStatusButtonConfig = (status) => {
+    const configs = {
+      processing: {
+        label: "Mark as Processing",
+        icon: PackageOpen,
+        variant: "default",
+        color: "bg-blue-500 hover:bg-blue-600"
+      },
+      confirmed: {
+        label: "Mark as Confirmed",
+        icon: CheckCircle,
+        variant: "default",
+        color: "bg-emerald-500 hover:bg-emerald-600"
+      },
+      shipped: {
+        label: "Mark as Shipped",
+        icon: Truck,
+        variant: "default",
+        color: "bg-purple-500 hover:bg-purple-600"
+      },
+      delivered: {
+        label: "Mark as Delivered",
+        icon: CheckCircle,
+        variant: "default",
+        color: "bg-green-500 hover:bg-green-600"
+      },
+      cancelled: {
+        label: "Cancel Order",
+        icon: X,
+        variant: "destructive",
+        color: "bg-red-500 hover:bg-red-600"
+      }
+    };
+    return configs[status] || { label: `Mark as ${status}`, icon: CheckCircle, variant: "default" };
+  };
+
+  if (!order) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto text-muted-foreground" />
+          <p className="mt-4 text-muted-foreground">Loading order details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Debug: Log order object to see its structure
+  useEffect(() => {
+    if (order) {
+      console.log("📊 Order object structure:", {
+        orderId: order._id,
+        id: order.id,
+        orderNumber: order.orderNumber,
+        fullOrder: order
+      });
+    }
+  }, [order]);
 
   return (
-    <DialogContent
-      className="
-        w-full max-w-full h-[100dvh] 
-        sm:max-h-[95vh] sm:max-w-7xl 
-        flex flex-col overflow-hidden p-0 
-        sm:rounded-2xl shadow-2xl bg-background
-      "
-    >
-      {/* Enhanced Mobile Header */}
-      <DialogHeader className="sticky top-0 z-50 bg-background border-b">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            {/* Back button for mobile */}
-            {isMobile ? (
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 -ml-2"
-                  onClick={() => setActiveTab("details")}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div className="min-w-0 flex-1">
-                  <DialogTitle className="text-base font-semibold truncate">
-                    #ORD-122355
-                  </DialogTitle>
-                  <div className="flex items-center gap-1.5">
-                    <Badge
-                      className={`${
-                        statusVariants[currentStatus]?.color
-                      } border-0 text-xs font-medium px-2 py-0.5 flex items-center gap-1`}
-                    >
-                      <StatusIcon className="h-2.5 w-2.5" />
-                      <span className="capitalize">{currentStatus}</span>
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">•</span>
-                    <span className="text-xs text-muted-foreground">GHC 450.00</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <DialogTitle className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-                  Order #ORD-122355
+    <DialogContent className="w-full max-w-full h-[100dvh] sm:max-h-[95vh] sm:max-w-6xl flex flex-col overflow-hidden p-0 bg-background">
+      {/* Header */}
+      <DialogHeader className="sticky top-0 z-50 bg-background border-b px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 -ml-2 shrink-0"
+                onClick={() => onClose?.()}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            )}
+            
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <DialogTitle className="text-lg sm:text-xl font-semibold truncate">
+                  {order.orderNumber || `ORD-${order._id?.slice(-8).toUpperCase()}`}
                 </DialogTitle>
-                <Badge
-                  variant={statusVariants[currentStatus]?.variant || "secondary"}
-                  className="shrink-0 text-xs sm:text-sm px-2 sm:px-3 py-0.5 sm:py-1 font-medium flex items-center gap-1.5"
+                <Badge 
+                  variant={statusConfig.variant}
+                  className={`${statusConfig.color} border px-3 py-1 font-medium flex items-center gap-1.5`}
                 >
-                  <StatusIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  <span className="capitalize">{currentStatus}</span>
+                  <StatusIcon className="h-3.5 w-3.5" />
+                  <span className="capitalize">{statusConfig.label}</span>
                 </Badge>
               </div>
-            )}
-
-            {/* Desktop Actions */}
-            <div className="hidden sm:flex items-center gap-1.5 lg:gap-2">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs lg:text-sm">
-                <Download className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                <span className="hidden lg:inline">Export</span>
-              </Button>
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs lg:text-sm">
-                <Printer className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                <span className="hidden lg:inline">Print</span>
-              </Button>
-              <Button size="sm" className="gap-1.5 text-xs lg:text-sm">
-                <Edit className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-                <span className="hidden lg:inline">Edit</span>
-              </Button>
-              <DialogClose className="h-9 w-9 rounded-full hover:bg-muted flex items-center justify-center">
-                <X className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </DialogClose>
+              
+              <DialogDescription className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" />
+                  {formatDate(order.orderDate)}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5" />
+                  {formatCurrency(order.totalAmount)}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  {order.cartItems?.length || 0} items
+                </span>
+              </DialogDescription>
             </div>
-
-            {/* Mobile Actions */}
-            {isMobile && (
-              <div className="flex items-center gap-1">
-                <DialogClose className="h-9 w-9 rounded-full hover:bg-muted flex items-center justify-center">
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Close</span>
-                </DialogClose>
-              </div>
-            )}
           </div>
 
-          {/* Mobile Tabs as Bottom Navigation */}
-          {isMobile && (
-            <div className="mt-3 pb-1">
-              <div className="flex items-center justify-between gap-1 bg-muted/30 rounded-lg p-1">
-                {[
-                  { id: "details", icon: FileText, label: "Details" },
-                  { id: "logistics", icon: Truck, label: "Track" },
-                  { id: "customer", icon: User, label: "Customer" },
-                  { id: "financial", icon: CardIcon, label: "Payment" },
-                ].map((tab) => (
-                  <MobileTabButton
-                    key={tab.id}
-                    active={activeTab === tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    icon={tab.icon}
-                    label={tab.label}
-                  />
-                ))}
-              </div>
+          {/* Desktop Actions */}
+          {!isMobile && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onClose?.()}
+                className="h-9 w-9"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrintInvoice}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Print
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => handleSendNotification("email")}
+              >
+                <Mail className="h-4 w-4" />
+                Email
+              </Button>
             </div>
           )}
         </div>
       </DialogHeader>
 
-      {/* Desktop Tabs */}
-      {!isMobile && (
-        <div className="sticky top-[57px] sm:top-[65px] z-40 bg-background/95 backdrop-blur-sm border-b supports-[backdrop-filter]:bg-background/60">
-          <div className="px-6 lg:px-8 overflow-x-auto scrollbar-hide">
-            <div className="flex space-x-1 min-w-max py-1">
-              {["details", "logistics", "financial", "customer", "notes"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`
-                    px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors
-                    ${activeTab === tab
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                    }
-                  `}
-                >
-                  {tab === "details" && "Order Details"}
-                  {tab === "logistics" && "Logistics"}
-                  {tab === "financial" && "Financial"}
-                  {tab === "customer" && "Customer"}
-                  {tab === "notes" && "Notes"}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Content - Mobile Optimized */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6 lg:space-y-8">
-          
-          {/* Mobile: Key Metrics */}
-          {isMobile && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-card border rounded-xl p-3">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Value</p>
-                <p className="font-bold text-base">GHC 450</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
+          {/* Left Column - Order Items & Customer */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Order Items */}
+            <div className="bg-card border rounded-lg">
+              <div className="p-5 border-b">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <ShoppingBag className="h-5 w-5" />
+                    Order Items
+                  </h3>
+                  <Badge variant="outline" className="text-sm">
+                    {order.cartItems?.length || 0} items
+                  </Badge>
+                </div>
               </div>
-              <div className="bg-card border rounded-xl p-3">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Date</p>
-                <p className="font-medium text-sm">12 Dec</p>
-                <p className="text-[10px] text-muted-foreground">14:30</p>
-              </div>
-              <div className="bg-card border rounded-xl p-3">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Region</p>
-                <Badge className={`${regionInfo.bg} ${regionInfo.color} border-0 text-xs font-medium px-2`}>
-                  {customerRegion}
-                </Badge>
-              </div>
-            </div>
-          )}
+              
+              <div className="p-1">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40%]">Product</TableHead>
+                        <TableHead className="text-center w-[15%]">Qty</TableHead>
+                        <TableHead className="text-right w-[20%]">Price</TableHead>
+                        <TableHead className="text-right w-[25%]">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {order.cartItems?.map((item, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{item.name || "Product"}</p>
+                              {item.sku && (
+                                <p className="text-sm text-muted-foreground">
+                                  SKU: {item.sku}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium">{item.quantity || 1}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(item.price || 0)}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatCurrency((item.price || 0) * (item.quantity || 1))}
+                          </TableCell>
+                        </TableRow>
+                      )) || (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-8">
+                            <p className="text-muted-foreground">No items found</p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
-          {/* Desktop: Overview Cards */}
-          {!isMobile && (
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-              <div className="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors">
-                <p className="text-xs text-muted-foreground mb-1">Value</p>
-                <p className="font-bold text-lg sm:text-xl lg:text-2xl">GHC 450.00</p>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  <Tag className="h-3 w-3" />
-                  Avg: GHC 380
-                </p>
-              </div>
-              <div className="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors">
-                <p className="text-xs text-muted-foreground mb-1">Payment</p>
-                <p className="font-medium text-sm sm:text-base">Mobile Money</p>
-                <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <CheckCircle className="h-3 w-3" />
-                  MTN • Verified
-                </p>
-              </div>
-              <div className="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors">
-                <p className="text-xs text-muted-foreground mb-1">Region</p>
-                <Badge className={`${regionInfo.bg} ${regionInfo.color} border-0 text-xs font-medium`}>
-                  {customerRegion}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-1">{regionInfo.deliveryDays} days</p>
-              </div>
-              <div className="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors">
-                <p className="text-xs text-muted-foreground mb-1">Date</p>
-                <p className="font-medium text-sm sm:text-base">12 Dec 2025</p>
-                <p className="text-xs text-muted-foreground">14:30 GMT</p>
-              </div>
-            </div>
-          )}
-
-          {/* Main Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Customer Card - Mobile Optimized */}
-              <section className="bg-card border rounded-xl p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-4 w-4 text-primary" />
+                {/* Order Summary */}
+                <div className="mt-6 pt-6 border-t px-5 pb-5">
+                  <div className="max-w-xs ml-auto space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>{formatCurrency(order.subtotal || 0)}</span>
                     </div>
-                    <div>
-                      <h3 className="text-base font-semibold">Mohammed Ibrahim</h3>
-                      <p className="text-xs text-muted-foreground">CUST-78901</p>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Shipping</span>
+                      <span className={order.shippingFee > 0 ? "" : "text-green-600 font-medium"}>
+                        {order.shippingFee > 0 
+                          ? formatCurrency(order.shippingFee)
+                          : "Free"
+                        }
+                      </span>
+                    </div>
+                    {order.tax > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tax</span>
+                        <span>{formatCurrency(order.tax || 0)}</span>
+                      </div>
+                    )}
+                    <Separator className="my-3" />
+                    <div className="flex justify-between text-lg font-bold">
+                      <span>Total</span>
+                      <span>{formatCurrency(order.totalAmount || 0)}</span>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-xs gap-1">
-                    <Shield className="h-3 w-3" />
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Information */}
+            <div className="bg-card border rounded-lg">
+              <div className="p-5 border-b">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Customer Information
+                </h3>
+              </div>
+              
+              <div className="p-5 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">
+                        {order.customerName || order.addressInfo?.fullName || "Customer"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {order.customerEmail || "No email provided"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="gap-1.5">
+                    <Shield className="h-3.5 w-3.5" />
                     Verified
                   </Badge>
                 </div>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0">
-                      <Phone className="h-4 w-4 text-green-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground">Phone</p>
-                      <p className="font-medium text-sm truncate">+233 24 000 0000</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MessageCircle className="h-4 w-4" />
-                    </Button>
-                  </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className={`h-9 w-9 rounded-full ${regionInfo.bg} flex items-center justify-center flex-shrink-0`}>
-                      <MapPin className={`h-4 w-4 ${regionInfo.color}`} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">Phone</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground">Delivery Address</p>
-                      <p className="font-medium text-sm">Tamale, Northern Region</p>
-                      <p className="text-xs text-muted-foreground">TL-1234 • {regionInfo.deliveryDays} days</p>
-                    </div>
+                    <p className="text-sm">
+                      {order.addressInfo?.phoneNumber || "Not provided"}
+                    </p>
                   </div>
-
-                  {isMobile && (
-                    <div className="p-2.5 bg-blue-50 rounded-lg">
-                      <p className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1.5">
-                        <Bell className="h-3.5 w-3.5" />
-                        Delivery Preference
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">Shipping Address</span>
+                    </div>
+                    <div className="text-sm">
+                      <p className="font-medium">{order.addressInfo?.address || "Not provided"}</p>
+                      <p className="text-muted-foreground">
+                        {order.addressInfo?.city || ""}
+                        {order.addressInfo?.region ? `, ${order.addressInfo.region}` : ""}
                       </p>
-                      <p className="text-xs text-blue-600">"After 5 PM. Call on arrival."</p>
-                    </div>
-                  )}
-                </div>
-                
-                {!isMobile && (
-                  <>
-                    <div className="p-2.5 bg-blue-50 rounded-lg mt-3">
-                      <p className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1.5">
-                        <Bell className="h-3.5 w-3.5" />
-                        Delivery Preference
-                      </p>
-                      <p className="text-sm text-blue-600">"After 5 PM. Call on arrival."</p>
-                    </div>
-                    <div className="flex gap-2 mt-4">
-                      <Button variant="outline" size="sm" className="flex-1 text-xs gap-1.5">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        SMS
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex-1 text-xs gap-1.5">
-                        <Mail className="h-3.5 w-3.5" />
-                        Email
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </section>
-
-              {/* Order Items - Mobile Optimized */}
-              <section className="bg-card border rounded-xl overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold flex items-center gap-2">
-                      <ShoppingBag className="h-4 w-4" />
-                      Order Items
-                    </h3>
-                    {!isMobile && (
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="outline" className="text-xs gap-1">
-                          <Plus className="h-3.5 w-3.5" />
-                          Add Item
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <Filter className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Mobile Items List */}
-                  {isMobile ? (
-                    <div className="space-y-3">
-                      {[
-                        {
-                          name: "Wireless Headset",
-                          desc: "HS-WL-2025 • Premium",
-                          sku: "SKU-78901",
-                          qty: 1,
-                          price: 200,
-                          total: 200,
-                          stock: "In Stock",
-                        },
-                        {
-                          name: "USB-C Charger",
-                          desc: "CH-UC-65W • Fast",
-                          sku: "SKU-78902",
-                          qty: 2,
-                          price: 125,
-                          total: 250,
-                          stock: "Low Stock",
-                        },
-                      ].map((item) => (
-                        <div key={item.sku} className="border rounded-lg p-3">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <p className="font-medium text-sm">{item.name}</p>
-                              <p className="text-xs text-muted-foreground">{item.desc}</p>
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {item.stock}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-3">
-                              <span className="text-muted-foreground">Qty: {item.qty}</span>
-                              <span className="text-muted-foreground">•</span>
-                              <span>GHC {item.price}</span>
-                            </div>
-                            <span className="font-semibold">GHC {item.total}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    // Desktop Table
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Product</TableHead>
-                            <TableHead className="text-center">SKU</TableHead>
-                            <TableHead className="text-center">Qty</TableHead>
-                            <TableHead className="text-right">Price</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {[
-                            {
-                              name: "Wireless Headset",
-                              desc: "HS-WL-2025 • Premium",
-                              sku: "SKU-78901",
-                              qty: 1,
-                              price: 200,
-                              total: 200,
-                              stock: "In Stock",
-                            },
-                            {
-                              name: "USB-C Charger",
-                              desc: "CH-UC-65W • Fast",
-                              sku: "SKU-78902",
-                              qty: 2,
-                              price: 125,
-                              total: 250,
-                              stock: "Low Stock",
-                            },
-                          ].map((item) => (
-                            <TableRow key={item.sku}>
-                              <TableCell>
-                                <div>
-                                  <p className="font-medium">{item.name}</p>
-                                  <p className="text-sm text-muted-foreground">{item.desc}</p>
-                                  <Badge variant="outline" className="text-xs mt-1">
-                                    {item.stock}
-                                  </Badge>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <code className="text-xs bg-muted px-2 py-1 rounded">{item.sku}</code>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <div className="inline-flex items-center gap-2">
-                                  <Button size="icon" variant="outline" className="h-6 w-6">
-                                    <Minus className="h-3 w-3" />
-                                  </Button>
-                                  <span className="w-8 text-center">{item.qty}</span>
-                                  <Button size="icon" variant="outline" className="h-6 w-6">
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">GHC {item.price.toFixed(2)}</TableCell>
-                              <TableCell className="text-right font-semibold">
-                                GHC {item.total.toFixed(2)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-
-                  {/* Order Summary */}
-                  <div className="border-t mt-4 pt-4">
-                    <div className={`${isMobile ? 'space-y-2' : 'max-w-xs ml-auto space-y-2'} text-sm`}>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span>GHC 450.00</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Shipping</span>
-                        <span className="text-green-600">Free</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">VAT</span>
-                        <span>GHC 56.25</span>
-                      </div>
-                      <Separator className="my-2" />
-                      <div className="flex justify-between text-base font-bold">
-                        <span>Total</span>
-                        <span>GHC 450.00</span>
-                      </div>
                     </div>
                   </div>
                 </div>
-              </section>
-            </div>
 
-            {/* Sidebar - Mobile Bottom Sheet */}
-            {!isMobile ? (
-              <div className="space-y-6">
-                {/* Status Update */}
-                <section className="bg-card border rounded-lg p-4 sticky top-24">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold">Management</h3>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <CommonForm
-                    formControls={[
-                      {
-                        label: "Status",
-                        name: "status",
-                        componentType: "select",
-                        options: [
-                          { id: "pending", label: "Pending" },
-                          { id: "processing", label: "Processing" },
-                          { id: "shipping", label: "Shipping" },
-                          { id: "delivered", label: "Delivered" },
-                          { id: "rejected", label: "Rejected" },
-                        ],
-                      },
-                    ]}
-                    formData={formData}
-                    setFormData={setFormData}
-                    onSubmit={handleSubmit}
-                    buttonText={isSubmitting ? "Updating..." : "Update Status"}
-                    buttonProps={{
-                      disabled: isSubmitting,
-                      size: "sm",
-                      className: "w-full",
-                    }}
-                  />
-                  <div className="grid grid-cols-2 gap-2 mt-4">
-                    <Button variant="outline" size="sm" className="text-xs gap-1">
-                      <Truck className="h-3.5 w-3.5" />
-                      Tracking
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs gap-1">
-                      <FileText className="h-3.5 w-3.5" />
-                      Invoice
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs gap-1">
-                      <Tag className="h-3.5 w-3.5" />
-                      Discount
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs text-red-600 gap-1">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      Flag
-                    </Button>
-                  </div>
-                </section>
-
-                {/* Logistics Timeline */}
-                <section className="bg-card border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold">Delivery Timeline</h3>
-                    <Badge variant="outline" className="text-xs">
-                      {regionInfo.warehouse}
-                    </Badge>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="h-6 w-6 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
-                        </div>
-                        <div className="flex-1 h-8 w-0.5 bg-emerald-200 mt-1"></div>
-                      </div>
-                      <div className="pb-4">
-                        <p className="font-medium text-sm">Payment Received</p>
-                        <p className="text-xs text-muted-foreground">12 Dec • 14:30</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center">
-                          <PackageOpen className="h-3.5 w-3.5 text-blue-600" />
-                        </div>
-                        <div className="flex-1 h-8 w-0.5 bg-blue-200 mt-1"></div>
-                      </div>
-                      <div className="pb-4">
-                        <p className="font-medium text-sm">Processing</p>
-                        <p className="text-xs text-muted-foreground">{regionInfo.warehouse}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="h-6 w-6 rounded-full border-2 border-dashed border-muted flex items-center justify-center">
-                          <Truck className="h-3.5 w-3.5 text-muted-foreground" />
-                        </div>
-                      </div>
+                {order.addressInfo?.deliveryNotes && (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex items-start gap-3">
+                      <Bell className="h-5 w-5 text-blue-600 mt-0.5" />
                       <div>
-                        <p className="text-sm text-muted-foreground">Out for Delivery</p>
-                        <p className="text-xs text-muted-foreground">Est. 15 Dec</p>
+                        <p className="text-sm font-medium text-blue-700 mb-1">
+                          Delivery Preference
+                        </p>
+                        <p className="text-sm text-blue-600">
+                          "{order.addressInfo.deliveryNotes}"
+                        </p>
                       </div>
                     </div>
                   </div>
-                </section>
-
-                {/* Notes */}
-                <section className="bg-card border rounded-lg p-4">
-                  <h3 className="text-base font-semibold mb-3">Notes</h3>
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <p className="text-sm font-medium mb-1">Evening delivery requested</p>
-                    <p className="text-xs text-muted-foreground">Admin • 12 Dec</p>
-                  </div>
-                  <textarea
-                    className="w-full p-3 border rounded-lg text-sm mt-3 resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="Add note..."
-                    rows="3"
-                  />
-                  <Button size="sm" className="w-full mt-3">
-                    Add Note
-                  </Button>
-                </section>
+                )}
               </div>
-            ) : (
-              // Mobile Quick Actions
-              <div className="pb-20">
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5 py-2">
-                    <Truck className="h-3.5 w-3.5" />
-                    Track
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5 py-2">
-                    <FileText className="h-3.5 w-3.5" />
-                    Invoice
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5 py-2">
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    SMS
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs gap-1.5 py-2">
-                    <Mail className="h-3.5 w-3.5" />
+            </div>
+          </div>
+
+          {/* Right Column - Actions & Info */}
+          <div className="space-y-6">
+            {/* Order Actions */}
+            <div className="bg-card border rounded-lg">
+              <div className="p-5 border-b">
+                <h3 className="text-lg font-semibold">Order Actions</h3>
+              </div>
+              
+              <div className="p-5 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 h-9"
+                    onClick={() => handleSendNotification("email")}
+                  >
+                    <Mail className="h-4 w-4" />
                     Email
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 h-9"
+                    onClick={() => handleSendNotification("sms")}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    SMS
+                  </Button>
                 </div>
                 
-                <div className="bg-card border rounded-xl p-4">
-                  <h3 className="text-sm font-semibold mb-3">Update Status</h3>
-                  <CommonForm
-                    formControls={[
-                      {
-                        label: "",
-                        name: "status",
-                        componentType: "select",
-                        options: [
-                          { id: "pending", label: "⏳ Pending" },
-                          { id: "processing", label: "📦 Processing" },
-                          { id: "shipping", label: "🚚 Shipping" },
-                          { id: "delivered", label: "✅ Delivered" },
-                          { id: "rejected", label: "❌ Rejected" },
-                        ],
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 h-9"
+                  onClick={handlePrintInvoice}
+                >
+                  <Printer className="h-4 w-4" />
+                  Print Invoice
+                </Button>
+                
+                {/* Status Update Buttons */}
+                {statusConfig.nextActions.map((status) => {
+                  const btnConfig = getStatusButtonConfig(status);
+                  const BtnIcon = btnConfig.icon;
+                  const isDisabled = isUpdating || currentStatus === status;
+                  
+                  return (
+                    <Button
+                      key={status}
+                      variant={btnConfig.variant}
+                      size="sm"
+                      className={`w-full gap-2 h-9 ${btnConfig.color}`}
+                      onClick={() => handleStatusUpdate(status)}
+                      disabled={isDisabled}
+                    >
+                      {isUpdating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <BtnIcon className="h-4 w-4" />
+                      )}
+                      {isUpdating ? "Updating..." : btnConfig.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Shipping Information */}
+            <div className="bg-card border rounded-lg">
+              <div className="p-5 border-b">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Truck className="h-5 w-5" />
+                  Shipping
+                </h3>
+              </div>
+              
+              <div className="p-5 space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Carrier</span>
+                    <span className="font-medium text-sm">
+                      {order.shippingMethod || "Standard Shipping"}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge variant="outline" className="text-xs">
+                      {currentStatus === "shipped" ? "In Transit" : "Preparing"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Status Timeline */}
+                <div className="pt-4 border-t">
+                  <h4 className="text-sm font-medium mb-4">Order Timeline</h4>
+                  <div className="space-y-4">
+                    {[
+                      { 
+                        status: "ordered", 
+                        label: "Order Placed", 
+                        date: order.orderDate,
+                        active: true,
+                        icon: CheckCircle
                       },
-                    ]}
-                    formData={formData}
-                    setFormData={setFormData}
-                    onSubmit={handleSubmit}
-                    buttonText={isSubmitting ? "Updating..." : "Update"}
-                    buttonProps={{
-                      disabled: isSubmitting,
-                      size: "sm",
-                      className: "w-full mt-3",
-                    }}
-                  />
+                      { 
+                        status: "processing", 
+                        label: "Processing", 
+                        date: ["processing", "confirmed", "shipped", "delivered"].includes(currentStatus) ? order.orderUpdateDate : null,
+                        active: ["processing", "confirmed", "shipped", "delivered"].includes(currentStatus),
+                        icon: PackageOpen
+                      },
+                      { 
+                        status: "shipped", 
+                        label: "Shipped", 
+                        date: ["shipped", "delivered"].includes(currentStatus) ? order.orderUpdateDate : null,
+                        active: ["shipped", "delivered"].includes(currentStatus),
+                        icon: Truck
+                      },
+                      { 
+                        status: "delivered", 
+                        label: "Delivered", 
+                        date: currentStatus === "delivered" ? order.orderUpdateDate : null,
+                        active: currentStatus === "delivered",
+                        icon: CheckCircle
+                      },
+                    ].map((step, index) => {
+                      const StepIcon = step.icon;
+                      return (
+                        <div key={step.status} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className={`h-6 w-6 rounded-full flex items-center justify-center ${
+                              step.active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            }`}>
+                              <StepIcon className="h-3.5 w-3.5" />
+                            </div>
+                            {index < 3 && (
+                              <div className={`flex-1 h-8 w-0.5 mt-1 ${
+                                step.active ? "bg-primary" : "bg-muted"
+                              }`}></div>
+                            )}
+                          </div>
+                          <div className="pb-1">
+                            <p className={`text-sm font-medium ${
+                              step.active ? "text-foreground" : "text-muted-foreground"
+                            }`}>
+                              {step.label}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {step.date ? formatDate(step.date) : "Pending"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Payment Information */}
+            <div className="bg-card border rounded-lg">
+              <div className="p-5 border-b">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Payment
+                </h3>
+              </div>
+              
+              <div className="p-5 space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Method</span>
+                    <span className="font-medium text-sm capitalize">
+                      {order.paymentMethod || "N/A"}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge
+                      variant={order.paymentStatus === "completed" ? "success" : "secondary"}
+                      className="text-xs"
+                    >
+                      {order.paymentStatus || "pending"}
+                    </Badge>
+                  </div>
+                  
+                  {order.paymentId && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Payment ID</span>
+                      <div className="flex items-center gap-1">
+                        <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-[120px]">
+                          {order.paymentId.slice(0, 8)}...
+                        </code>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6"
+                          onClick={() => handleCopy(order.paymentId)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Bottom Action Bar */}
+      {/* Mobile Bottom Actions */}
       {isMobile && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t supports-[backdrop-filter]:bg-background/60 p-4">
+        <div className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-lg font-bold">GHC 450.00</p>
+              <p className="text-lg font-bold">{formatCurrency(order.totalAmount)}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <Edit className="h-3.5 w-3.5" />
-                Edit
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="gap-1.5"
+                onClick={handlePrintInvoice}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print
               </Button>
-              <Button size="sm" className="gap-1.5">
-                <CheckCircle className="h-3.5 w-3.5" />
-                Update
+              <Button 
+                size="sm" 
+                variant="default" 
+                className="gap-1.5"
+                onClick={() => handleStatusUpdate("processing")}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-3.5 w-3.5" />
+                )}
+                {isUpdating ? "Updating" : "Update"}
               </Button>
             </div>
           </div>

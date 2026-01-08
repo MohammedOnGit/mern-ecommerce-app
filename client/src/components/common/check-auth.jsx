@@ -1,69 +1,4 @@
-// import React from "react";
-// import { Navigate, useLocation } from "react-router-dom";
-
-// function CheckAuth({ isAuthenticated, user, children }) {
-//   const location = useLocation();
-
-//   // 1. Root route `/`
-//   if (location.pathname === "/") {
-//     if (!isAuthenticated) {
-//       return <Navigate to="/auth/login" replace />;
-//     }
-//     return user?.role === "admin" ? (
-//       <Navigate to="/admin/dashboard" replace />
-//     ) : (
-//       <Navigate to="/shop/dashboard" replace />
-//     );
-//   }
-
-//   // 2. Unauthenticated users → block everything except login/register
-//   if (!isAuthenticated) {
-//     if (
-//       !location.pathname.includes("/login") &&
-//       !location.pathname.includes("/register")
-//     ) {
-//       return <Navigate to="/auth/login" replace />;
-//     }
-//   }
-
-//   // 3. Authenticated users → prevent access to login/register
-//   if (
-//     isAuthenticated &&
-//     (location.pathname.includes("/login") ||
-//       location.pathname.includes("/register"))
-//   ) {
-//     return user?.role === "admin" ? (
-//       <Navigate to="/admin/dashboard" replace />
-//     ) : (
-//       <Navigate to="/shop/dashboard" replace />
-//     );
-//   }
-
-//   // 4. Non-admin users → block admin routes
-//   if (
-//     isAuthenticated &&
-//     user?.role !== "admin" &&
-//     location.pathname.includes("/admin")
-//   ) {
-//     return <Navigate to="/unauth-page" replace />;
-//   }
-
-//   // 5. Admin users → block shop routes
-//   if (
-//     isAuthenticated &&
-//     user?.role === "admin" &&
-//     location.pathname.includes("/shop")
-//   ) {
-//     return <Navigate to="/admin/dashboard" replace />;
-//   }
-
-//   // Otherwise allow access
-//   return <>{children}</>;
-// }
-
-// export default CheckAuth;
-
-
+// components/common/check-auth.jsx
 import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { AlertCircle, RefreshCw, Loader2, ShieldAlert } from "lucide-react";
@@ -213,7 +148,7 @@ function CheckAuth({ isAuthenticated, user, children, requiredRole }) {
     return user?.role === "admin" ? (
       <Navigate to="/admin/dashboard" replace />
     ) : (
-      <Navigate to="/shop/home" replace />  // Changed from /shop/dashboard to /shop/home
+      <Navigate to="/shop/home" replace />
     );
   }
 
@@ -222,10 +157,10 @@ function CheckAuth({ isAuthenticated, user, children, requiredRole }) {
     const allowedUnauthPaths = [
       "/auth/login",
       "/auth/register",
-      "/shop/home",        // Allow viewing home page
-      "/shop/listing",     // Allow browsing products
-      "/shop/search",      // Allow search
-      "/shop/product/"     // Allow viewing products (partial match)
+      "/shop/home",
+      "/shop/listing",
+      "/shop/search",
+      "/shop/product/"
     ];
     
     const isAllowed = allowedUnauthPaths.some(path => 
@@ -233,7 +168,6 @@ function CheckAuth({ isAuthenticated, user, children, requiredRole }) {
     );
     
     if (!isAllowed) {
-      // Store the attempted location for redirect after login
       return <Navigate 
         to="/auth/login" 
         replace 
@@ -297,9 +231,7 @@ function CheckAuth({ isAuthenticated, user, children, requiredRole }) {
   }
 
   // 6. Admin users accessing shop routes - redirect to admin dashboard
-  // (Optional: Comment this out if you want admins to also shop)
   if (isAuthenticated && user?.role === "admin" && location.pathname.startsWith("/shop/")) {
-    // Allow access to shop home and listing for admins too
     const allowedShopPaths = ["/shop/home", "/shop/listing", "/shop/search", "/shop/product/"];
     const isAllowed = allowedShopPaths.some(path => 
       location.pathname.startsWith(path)
