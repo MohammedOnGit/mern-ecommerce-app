@@ -152,6 +152,94 @@ const getOrderDetailsForAdmin = async (req, res) => {
   }
 };
 
+// const updateOrderStatus = async (req, res) => {
+//   console.log('🔄 Update Order Status:', req.params.orderId, req.body);
+  
+//   const startTime = Date.now();
+//   const requestId = crypto.randomBytes(8).toString('hex');
+  
+//   try {
+//     const { orderId } = req.params;
+//     let { status } = req.body;
+    
+//     console.log('🔄 Update request params:', {
+//       params: req.params,
+//       body: req.body,
+//       orderId: orderId
+//     });
+    
+//     // 🔐 Admin protection
+//     if (!req.user || req.user.role !== 'admin') {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Access denied - Admin only'
+//       });
+//     }
+    
+//     if (!status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Status is required'
+//       });
+//     }
+    
+//     // Normalize status: map "shipped" to "shipping" for consistency
+//     if (status === 'shipped') {
+//       status = 'shipping';
+//     }
+    
+//     // Valid statuses (using consistent naming)
+//     const validStatuses = ['pending', 'processing', 'confirmed', 'shipping', 'delivered', 'cancelled'];
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+//       });
+//     }
+    
+//     const order = await Order.findById(orderId);
+    
+//     if (!order) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Order not found'
+//       });
+//     }
+    
+//     // Update order
+//     order.orderStatus = status;
+//     order.orderUpdateDate = new Date();
+    
+//     await order.save();
+    
+//     const responseTime = Date.now() - startTime;
+    
+//     res.status(200).json({
+//       success: true,
+//       message: `Order status updated to ${status}`,
+//       requestId,
+//       responseTime: `${responseTime}ms`,
+//       order: {
+//         id: order._id,
+//         orderStatus: order.orderStatus,
+//         orderUpdateDate: order.orderUpdateDate
+//       }
+//     });
+    
+//   } catch (error) {
+//     const responseTime = Date.now() - startTime;
+//     console.error(`[${requestId}] ❌ Update Order Status Error (${responseTime}ms):`, error);
+    
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to update order status',
+//       requestId,
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// };
+
+// Update the updateOrderStatus function in your admin order controller
 const updateOrderStatus = async (req, res) => {
   console.log('🔄 Update Order Status:', req.params.orderId, req.body);
   
@@ -160,7 +248,7 @@ const updateOrderStatus = async (req, res) => {
   
   try {
     const { orderId } = req.params;
-    let { status } = req.body;
+    let { status, reason } = req.body;
     
     console.log('🔄 Update request params:', {
       params: req.params,
@@ -188,7 +276,7 @@ const updateOrderStatus = async (req, res) => {
       status = 'shipping';
     }
     
-    // Valid statuses (using consistent naming)
+    // Valid statuses
     const validStatuses = ['pending', 'processing', 'confirmed', 'shipping', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -206,11 +294,116 @@ const updateOrderStatus = async (req, res) => {
       });
     }
     
-    // Update order
-    order.orderStatus = status;
-    order.orderUpdateDate = new Date();
+    // Prevent invalid status transitions
+    if (order.orderStatus === 'cancelled' && status !== 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update a cancelled order'
+      });
+    }
     
-    await order.save();
+    if (order.orderStatus === 'delivered' && status !== 'delivered') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update a delivered order'
+      });
+    }
+    
+    const previousStatus = order.orderStatus;
+    const previousStockStatus = order.stockStatus;
+    
+    // Handle stock based on status change
+    if (status === 'cancelled' && previousStatus !== 'cancelled') {
+      // Cancel order and release stock
+      await Order.cancelOrderAndReleaseStock(orderId, reason || 'Admin cancellation');
+      
+      const responseTime = Date.now() - startTime;
+      
+      return res.status(200).json({
+        success: true,
+        message: `Order cancelled and stock released`,
+        requestId,
+        responseTime: `${responseTime}ms`,
+        order: {
+          id: order._id,
+          orderStatus: 'cancelled',
+          stockStatus: 'stock_released',
+          orderUpdateDate: new Date()
+        }
+      });
+      
+    } else if (status === 'confirmed' && previousStatus === 'pending') {
+      // Deduct stock when order is confirmed
+      const deductionResults = [];
+      const deductionErrors = [];
+      
+      for (const item of order.cartItems) {
+        const itemStockInfo = item.stockInfo || {};
+        if (!itemStockInfo.allowBackorders || itemStockInfo.availableAtCheckout >= item.quantity) {
+          try {
+            const deductedProduct = await Product.deductStock(item.productId, item.quantity);
+            deductionResults.push({
+              productId: item.productId,
+              title: item.title,
+              deducted: item.quantity,
+              newTotalStock: deductedProduct.totalStock,
+              newAvailableStock: deductedProduct.availableStock
+            });
+          } catch (deductError) {
+            deductionErrors.push({
+              productId: item.productId,
+              title: item.title,
+              error: deductError.message
+            });
+          }
+        }
+      }
+      
+      // Update order
+      order.orderStatus = status;
+      order.stockStatus = deductionErrors.length > 0 ? 'partial_stock_deducted' : 'stock_deducted';
+      order.stockDeductedAt = new Date();
+      order.deductionResults = deductionResults;
+      order.orderUpdateDate = new Date();
+      
+      await order.save();
+      
+      const responseTime = Date.now() - startTime;
+      
+      return res.status(200).json({
+        success: true,
+        message: `Order confirmed and stock deducted`,
+        requestId,
+        responseTime: `${responseTime}ms`,
+        stockDeduction: {
+          success: deductionResults.length,
+          failed: deductionErrors.length,
+          results: deductionResults,
+          errors: deductionErrors.length > 0 ? deductionErrors : undefined
+        },
+        order: {
+          id: order._id,
+          orderStatus: order.orderStatus,
+          stockStatus: order.stockStatus,
+          orderUpdateDate: order.orderUpdateDate
+        }
+      });
+      
+    } else if (status === 'delivered' && previousStockStatus !== 'stock_deducted' && previousStockStatus !== 'partial_stock_deducted') {
+      // If marking as delivered but stock wasn't deducted yet
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot deliver order without deducting stock first. Confirm order first.',
+        requestId
+      });
+      
+    } else {
+      // Regular status update
+      order.orderStatus = status;
+      order.orderUpdateDate = new Date();
+      
+      await order.save();
+    }
     
     const responseTime = Date.now() - startTime;
     

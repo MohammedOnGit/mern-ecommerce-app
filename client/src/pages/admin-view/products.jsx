@@ -20,6 +20,7 @@ import { PackageOpen } from "lucide-react";
 import { toast } from "sonner";
 import AdminProductTile from "@/components/admin-view/product-tile";
 
+// ✅ UPDATED: Added all inventory management fields
 const initialFormData = {
   title: "",
   description: "",
@@ -28,6 +29,10 @@ const initialFormData = {
   price: "",
   salePrice: "",
   image: "",
+  totalStock: "",
+  lowStockThreshold: "5",
+  showOutOfStock: "true",
+  isActive: "true",
 };
 
 function AdminProducts() {
@@ -44,19 +49,37 @@ function AdminProducts() {
     dispatch(fetchAllProducts());
   }, [dispatch]);
 
-  // ✅ SUBMIT (ADD / EDIT)
+  // ✅ SUBMIT (ADD / EDIT) - Updated to handle inventory fields
   function onSubmit(event) {
     event.preventDefault();
     if (imageLoadingState) return toast.error("Image is still uploading...");
     if (!uploadedImageUrl && !currentEditedId)
       return toast.error("Upload a product image first");
-    if (!formData.title || !formData.price || !formData.category) {
+    if (!formData.title || !formData.price || !formData.category || !formData.totalStock) {
       return toast.error("Please fill all required fields");
+    }
+
+    // ✅ Validate stock values
+    const totalStock = parseInt(formData.totalStock);
+    const lowStockThreshold = parseInt(formData.lowStockThreshold) || 5;
+    
+    if (totalStock < 0) {
+      return toast.error("Total stock cannot be negative");
+    }
+    
+    if (lowStockThreshold < 0) {
+      return toast.error("Low stock threshold cannot be negative");
     }
 
     const payload = {
       ...formData,
       image: uploadedImageUrl || formData.image,
+      totalStock: totalStock,
+      lowStockThreshold: lowStockThreshold,
+      showOutOfStock: formData.showOutOfStock === "true",
+      isActive: formData.isActive === "true",
+      // Remove salePrice if empty
+      salePrice: formData.salePrice ? formData.salePrice : null,
     };
 
     if (currentEditedId) {
@@ -67,7 +90,10 @@ function AdminProducts() {
           dispatch(fetchAllProducts());
           resetForm();
         })
-        .catch(() => toast.error("Failed to update product"));
+        .catch((error) => {
+          console.error("Update error:", error);
+          toast.error(error?.message || "Failed to update product");
+        });
     } else {
       dispatch(addNewProduct(payload))
         .unwrap()
@@ -76,7 +102,10 @@ function AdminProducts() {
           dispatch(fetchAllProducts());
           resetForm();
         })
-        .catch(() => toast.error("Failed to add product"));
+        .catch((error) => {
+          console.error("Add error:", error);
+          toast.error(error?.message || "Failed to add product");
+        });
     }
   }
 
@@ -88,7 +117,10 @@ function AdminProducts() {
         toast.success("Product deleted successfully!");
         dispatch(fetchAllProducts());
       })
-      .catch(() => toast.error("Failed to delete product"));
+      .catch((error) => {
+        console.error("Delete error:", error);
+        toast.error(error?.message || "Failed to delete product");
+      });
   }
 
   function resetForm() {
@@ -105,7 +137,7 @@ function AdminProducts() {
   }
 
   const isFormInvalid =
-    !formData.title || !formData.price || !formData.category;
+    !formData.title || !formData.price || !formData.category || !formData.totalStock;
 
   return (
     <Fragment>
@@ -143,9 +175,6 @@ function AdminProducts() {
           <div className="col-span-full flex items-center justify-center">
             <div className="flex flex-col items-center text-center text-gray-500">
               <PackageOpen size={90} className="mb-4 text-gray-400" />
-              {/* <h2 className="text-xl font-semibold text-gray-700">
-          No products available
-        </h2> */}
               <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
                 No products available
               </h2>

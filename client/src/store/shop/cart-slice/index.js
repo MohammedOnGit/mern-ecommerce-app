@@ -1,5 +1,3 @@
-
-
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
@@ -14,11 +12,72 @@ const initialState = {
   lastUpdated: null
 };
 
+// Helper function to check stock before adding to cart
+const checkProductStock = async (productId, requestedQuantity) => {
+  try {
+    const response = await axios.get(
+      `${API_BASE_URL}/shop/products/get/${productId}`
+    );
+    
+    const product = response.data?.data || response.data;
+    
+    if (!product) {
+      return { available: false, reason: "Product not found" };
+    }
+    
+    // Check if product is active
+    if (product.isActive === false) {
+      return { available: false, reason: "Product is not available" };
+    }
+    
+    // Check available stock (not total stock)
+    const availableStock = product.availableStock || 
+                          Math.max(0, (product.totalStock || 0) - (product.reservedStock || 0));
+    
+    // Check if allowBackorders is enabled
+    if (product.allowBackorders) {
+      return { 
+        available: true, 
+        availableStock,
+        totalStock: product.totalStock || 0,
+        reservedStock: product.reservedStock || 0,
+        allowBackorders: true,
+        product
+      };
+    }
+    
+    // INVENTORY CHECK: Can't add more than available stock
+    if (availableStock < requestedQuantity) {
+      return { 
+        available: false, 
+        reason: `Only ${availableStock} item(s) available in stock`,
+        availableStock,
+        totalStock: product.totalStock || 0
+      };
+    }
+    
+    return { 
+      available: true, 
+      availableStock,
+      totalStock: product.totalStock || 0,
+      reservedStock: product.reservedStock || 0,
+      allowBackorders: product.allowBackorders || false,
+      product
+    };
+    
+  } catch (error) {
+    console.error("Stock check error:", error);
+    return { 
+      available: false, 
+      reason: "Failed to check stock availability" 
+    };
+  }
+};
+
 export const fetchCartItems = createAsyncThunk(
   'cart/fetchCartItems',
   async (userId, { rejectWithValue }) => {
     try {
-      // Get token from localStorage for backup
       const token = localStorage.getItem('token');
       
       const response = await axios.get(
@@ -31,17 +90,29 @@ export const fetchCartItems = createAsyncThunk(
       );
       
       if (response.data.success) {
-        return response.data.data;
+        // Validate stock for each item in cart
+        const validatedItems = [];
+        for (const item of response.data.data?.items || []) {
+          if (item.productId) {
+            const stockCheck = await checkProductStock(item.productId, item.quantity);
+            if (stockCheck.available) {
+              validatedItems.push(item);
+            } else {
+              console.warn(`Item ${item.productId} removed from cart: ${stockCheck.reason}`);
+            }
+          }
+        }
+        
+        return {
+          ...response.data.data,
+          items: validatedItems
+        };
       } else {
         return rejectWithValue(response.data.message || "Failed to fetch cart");
       }
     } catch (error) {
       if (error.response?.status === 401) {
-        // Auth error - don't clear cart, just return empty
         return { items: [], cartCount: 0, subtotal: 0 };
-      }
-      if (error.response?.status === 429) {
-        return rejectWithValue("Rate limited. Please try again in a moment.");
       }
       return rejectWithValue(error.response?.data?.message || "Failed to fetch cart");
     }
@@ -52,7 +123,17 @@ export const addToCart = createAsyncThunk(
   'cart/addToCart',
   async ({ userId, productId, quantity = 1 }, { rejectWithValue, getState }) => {
     try {
-      // Get token from localStorage for auth persistence
+      // STEP 1: CHECK STOCK BEFORE ADDING
+      const stockCheck = await checkProductStock(productId, quantity);
+      
+      if (!stockCheck.available) {
+        return rejectWithValue({
+          message: stockCheck.reason,
+          availableStock: stockCheck.availableStock,
+          productId
+        });
+      }
+      
       const token = localStorage.getItem('token');
       
       const response = await axios.post(
@@ -68,13 +149,32 @@ export const addToCart = createAsyncThunk(
       if (response.data.success) {
         return response.data.data;
       } else {
+        // If backend fails, check if it's a stock issue
+        if (response.data.message?.includes('stock') || response.data.message?.includes('Stock')) {
+          return rejectWithValue({
+            message: response.data.message,
+            productId
+          });
+        }
         return rejectWithValue(response.data.message || "Failed to add to cart");
       }
     } catch (error) {
       if (error.response?.status === 401) {
-        // Auth error - don't reject, use optimistic update
+        // Auth error - still check stock for optimistic update
         const state = getState();
         const product = state.shopProducts?.products?.find(p => p._id === productId) || {};
+        
+        // Check if we can add optimistically
+        const availableStock = product.availableStock || product.totalStock || 0;
+        const currentCartQty = state.cart.items.find(i => i.productId === productId)?.quantity || 0;
+        
+        if (availableStock < (currentCartQty + quantity)) {
+          return rejectWithValue({
+            message: `Only ${availableStock} item(s) available`,
+            availableStock,
+            productId
+          });
+        }
         
         // Return optimistic data
         return {
@@ -91,9 +191,14 @@ export const addToCart = createAsyncThunk(
           subtotal: state.cart.subtotal + (product.salePrice || product.price || 0) * quantity
         };
       }
-      if (error.response?.status === 429) {
-        return rejectWithValue("Rate limited. Please try again in a moment.");
+      
+      if (error.response?.data?.message?.includes('stock')) {
+        return rejectWithValue({
+          message: error.response.data.message,
+          productId
+        });
       }
+      
       return rejectWithValue(error.response?.data?.message || "Failed to add to cart");
     }
   }
@@ -101,10 +206,11 @@ export const addToCart = createAsyncThunk(
 
 export const updateCartQuantity = createAsyncThunk(
   'cart/updateQuantity',
-  async ({ userId, productId, quantity }, { rejectWithValue }) => {
+  async ({ userId, productId, quantity }, { rejectWithValue, getState }) => {
     try {
       const token = localStorage.getItem('token');
       
+      // Direct API call - let backend handle stock validation
       const response = await axios.put(
         `${API_BASE_URL}/shop/cart/update`,
         { userId, productId, quantity },
@@ -118,13 +224,51 @@ export const updateCartQuantity = createAsyncThunk(
       if (response.data.success) {
         return response.data.data;
       } else {
-        return rejectWithValue(response.data.message || "Failed to update cart");
+        // IMPROVED ERROR HANDLING: Better parsing of backend errors
+        const errorData = response.data;
+        
+        if (errorData.message?.includes('stock') || 
+            errorData.message?.includes('Stock') ||
+            errorData.message?.includes('available') ||
+            errorData.message?.includes('Available')) {
+          
+          return rejectWithValue({
+            message: errorData.message,
+            availableStock: errorData.availableStock,
+            maxAllowed: errorData.maxAllowed,
+            currentQuantity: errorData.currentQuantity,
+            productId,
+            type: 'stock_error'
+          });
+        }
+        
+        return rejectWithValue({
+          message: errorData.message || "Failed to update cart",
+          productId,
+          type: 'general_error'
+        });
       }
     } catch (error) {
-      if (error.response?.status === 429) {
-        return rejectWithValue("Rate limited. Please try again in a moment.");
+      // IMPROVED NETWORK ERROR HANDLING
+      console.error('Update cart quantity network error:', error);
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        return rejectWithValue({
+          message: errorData.message || "Failed to update cart",
+          availableStock: errorData.availableStock,
+          maxAllowed: errorData.maxAllowed,
+          productId,
+          type: 'stock_error'
+        });
       }
-      return rejectWithValue(error.response?.data?.message || "Failed to update cart");
+      
+      return rejectWithValue({
+        message: error.message || "Network error. Please check your connection.",
+        productId,
+        type: 'network_error'
+      });
     }
   }
 );
@@ -164,21 +308,7 @@ export const deleteCartItem = createAsyncThunk(
           };
         }
       }
-      if (error.response?.status === 429) {
-        return rejectWithValue("Rate limited. Please try again in a moment.");
-      }
       return rejectWithValue(error.response?.data?.message || "Failed to delete item");
-    }
-  }
-);
-
-export const updateCartFromWishlistMove = createAsyncThunk(
-  'cart/updateFromWishlistMove',
-  async (cartData, { rejectWithValue }) => {
-    try {
-      return cartData;
-    } catch (error) {
-      return rejectWithValue("Failed to update cart from wishlist move");
     }
   }
 );
@@ -188,13 +318,11 @@ const cartSlice = createSlice({
   initialState,
   reducers: {
     clearCart: (state) => {
-      // Only clear cart data, preserve other state
       state.items = [];
       state.cartCount = 0;
       state.subtotal = 0;
       state.error = null;
       state.lastUpdated = new Date().toISOString();
-      // ⚠️ Auth data remains in localStorage and auth slice
     },
     updateCartCount: (state, action) => {
       state.cartCount = action.payload;
@@ -202,114 +330,12 @@ const cartSlice = createSlice({
     updateCartSubtotal: (state, action) => {
       state.subtotal = action.payload;
     },
-    addOptimisticCartItem: (state, action) => {
-      const { product, quantity = 1 } = action.payload;
-      const exists = state.items.find(item => item.productId === product._id);
-      
-      if (exists) {
-        exists.quantity += quantity;
-      } else {
-        state.items.push({
-          productId: product._id,
-          image: product.image,
-          title: product.title,
-          price: product.price,
-          salePrice: product.salePrice,
-          quantity: quantity,
-          _id: `optimistic-${Date.now()}`
-        });
-      }
-      
-      state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-      state.subtotal = state.items.reduce((sum, item) => {
-        const price = item.salePrice || item.price || 0;
-        return sum + (price * item.quantity);
-      }, 0);
-      state.lastUpdated = new Date().toISOString();
-    },
-    removeOptimisticCartItem: (state, action) => {
-      const { productId } = action.payload;
-      state.items = state.items.filter(item => item.productId !== productId);
-      state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-      state.subtotal = state.items.reduce((sum, item) => {
-        const price = item.salePrice || item.price || 0;
-        return sum + (price * item.quantity);
-      }, 0);
-      state.lastUpdated = new Date().toISOString();
-    },
     clearCartError: (state) => {
       state.error = null;
     },
-    syncCartItems: (state, action) => {
-      const { items, cartCount, subtotal } = action.payload;
-      state.items = items || [];
-      state.cartCount = cartCount || state.items.reduce((sum, item) => sum + item.quantity, 0);
-      state.subtotal = subtotal || state.items.reduce((sum, item) => {
-        const price = item.salePrice || item.price || 0;
-        return sum + (price * item.quantity);
-      }, 0);
-      state.lastUpdated = new Date().toISOString();
-      state.error = null;
-    },
-    addCartItemDirectly: (state, action) => {
-      const { product, quantity = 1 } = action.payload;
-      const existingItem = state.items.find(item => item.productId === product._id);
-      
-      if (existingItem) {
-        existingItem.quantity += quantity;
-      } else {
-        state.items.push({
-          productId: product._id,
-          image: product.image || product.images?.[0],
-          title: product.title,
-          price: product.price,
-          salePrice: product.salePrice,
-          quantity: quantity,
-          addedAt: new Date().toISOString()
-        });
-      }
-      
-      state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-      state.subtotal = state.items.reduce((sum, item) => {
-        const price = item.salePrice || item.price || 0;
-        return sum + (price * item.quantity);
-      }, 0);
-      state.lastUpdated = new Date().toISOString();
-    },
-    restoreCartFromStorage: (state) => {
-      // Try to restore cart from localStorage if auth is valid
-      try {
-        const token = localStorage.getItem('token');
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        
-        if (token && user.id) {
-          const savedCart = localStorage.getItem('cart_backup');
-          if (savedCart) {
-            const parsed = JSON.parse(savedCart);
-            state.items = parsed.items || [];
-            state.cartCount = parsed.cartCount || 0;
-            state.subtotal = parsed.subtotal || 0;
-            state.lastUpdated = parsed.lastUpdated || new Date().toISOString();
-            console.log('🛒 Cart restored from localStorage backup');
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to restore cart from storage:', error);
-      }
-    },
-    saveCartToStorage: (state) => {
-      // Save cart to localStorage as backup
-      try {
-        const cartBackup = {
-          items: state.items,
-          cartCount: state.cartCount,
-          subtotal: state.subtotal,
-          lastUpdated: state.lastUpdated
-        };
-        localStorage.setItem('cart_backup', JSON.stringify(cartBackup));
-      } catch (error) {
-        console.warn('Failed to save cart to storage:', error);
-      }
+    // New action to handle stock validation errors
+    setCartStockError: (state, action) => {
+      state.error = action.payload;
     }
   },
   extraReducers: (builder) => {
@@ -328,28 +354,10 @@ const cartSlice = createSlice({
         }, 0);
         state.lastUpdated = new Date().toISOString();
         state.error = null;
-        
-        // Save cart to localStorage after successful fetch
-        try {
-          const cartBackup = {
-            items: state.items,
-            cartCount: state.cartCount,
-            subtotal: state.subtotal,
-            lastUpdated: state.lastUpdated
-          };
-          localStorage.setItem('cart_backup', JSON.stringify(cartBackup));
-        } catch (error) {
-          console.warn('Failed to save cart backup:', error);
-        }
       })
       .addCase(fetchCartItems.rejected, (state, action) => {
         state.isLoading = false;
-        // Don't clear cart on auth errors
-        if (action.payload?.includes('401') || action.payload?.includes('auth')) {
-          state.error = "Please log in to view your cart";
-        } else {
-          state.error = action.payload;
-        }
+        state.error = action.payload;
       })
       
       .addCase(addToCart.pending, (state) => {
@@ -398,7 +406,6 @@ const cartSlice = createSlice({
       })
       .addCase(deleteCartItem.fulfilled, (state, action) => {
         state.isLoading = false;
-        // Handle both optimistic and actual responses
         if (action.payload.items) {
           state.items = action.payload.items;
           state.cartCount = action.payload.cartCount || 0;
@@ -417,69 +424,6 @@ const cartSlice = createSlice({
       .addCase(deleteCartItem.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
-      })
-      
-      .addCase(updateCartFromWishlistMove.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(updateCartFromWishlistMove.fulfilled, (state, action) => {
-        state.isLoading = false;
-        const { cartItems, cartSummary } = action.payload;
-        
-        if (cartItems) {
-          state.items = cartItems;
-        }
-        
-        if (cartSummary) {
-          state.cartCount = cartSummary.totalItems || state.items.reduce((sum, item) => sum + item.quantity, 0);
-          state.subtotal = cartSummary.subtotal || state.items.reduce((sum, item) => {
-            const price = item.salePrice || item.price || 0;
-            return sum + (price * item.quantity);
-          }, 0);
-        } else {
-          state.cartCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-          state.subtotal = state.items.reduce((sum, item) => {
-            const price = item.salePrice || item.price || 0;
-            return sum + (price * item.quantity);
-          }, 0);
-        }
-        
-        state.lastUpdated = new Date().toISOString();
-        state.error = null;
-      })
-      .addCase(updateCartFromWishlistMove.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload;
-      })
-      
-      // Handle clearAllUserData action - ONLY clear cart data, not entire state
-      .addCase('clear/clearAllUserData', (state) => {
-        // Only reset cart-specific properties
-        state.items = [];
-        state.cartCount = 0;
-        state.subtotal = 0;
-        state.error = null;
-        state.lastUpdated = new Date().toISOString();
-        // Keep isLoading state to prevent UI flickering
-        // ⚠️ Auth data remains untouched
-      })
-      
-      // Add auth status change listeners
-      .addCase('auth/checkAuthStatus/fulfilled', (state, action) => {
-        // When auth is restored, optionally restore cart
-        if (action.payload.user?.id) {
-          // Cart will be fetched automatically by components
-          console.log('🛒 Auth restored, cart can be fetched');
-        }
-      })
-      .addCase('auth/logoutUser/fulfilled', (state) => {
-        // Only clear cart on explicit logout
-        state.items = [];
-        state.cartCount = 0;
-        state.subtotal = 0;
-        state.error = null;
-        state.lastUpdated = new Date().toISOString();
       });
   }
 });
@@ -487,14 +431,9 @@ const cartSlice = createSlice({
 export const { 
   clearCart, 
   updateCartCount, 
-  updateCartSubtotal, 
-  addOptimisticCartItem,
-  removeOptimisticCartItem,
+  updateCartSubtotal,
   clearCartError,
-  syncCartItems,
-  addCartItemDirectly,
-  restoreCartFromStorage,  // NEW
-  saveCartToStorage        // NEW
+  setCartStockError
 } = cartSlice.actions;
 
 export default cartSlice.reducer;
