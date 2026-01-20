@@ -5,7 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api"
 
 const initialState = {
   approvalURL: null,
-  isloading: false,
+  isLoading: false,
   orderId: null,
   error: null,
   orderDetails: null,
@@ -259,7 +259,7 @@ const shoppingOrderSlice = createSlice({
       state.approvalURL = null;
       state.orderId = null;
       state.error = null;
-      state.isloading = false;
+      state.isLoading = false;
       state.orderDetails = null;
       state.orders = [];
       state.orderCount = 0;
@@ -276,50 +276,50 @@ const shoppingOrderSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(createNewOrder.pending, (state) => {
-        state.isloading = true;
+        state.isLoading = true;
         state.error = null;
       })
       .addCase(createNewOrder.fulfilled, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.approvalURL = action.payload.data?.payment?.authorization_url || action.payload.authorization_url;
         state.orderId = action.payload.orderId || action.payload.data?.orderId;
         state.error = null;
         state.orderDetails = action.payload;
       })
       .addCase(createNewOrder.rejected, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.approvalURL = null;
         state.orderId = null;
         state.error = action.payload || "Failed to create order";
       })
       .addCase(getAllOrdersByUserId.pending, (state) => {
-        state.isloading = true;
+        state.isLoading = true;
         state.error = null;
       })
       .addCase(getAllOrdersByUserId.fulfilled, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.orderDetails = action.payload;
         state.orders = action.payload.orders || [];
         state.orderCount = action.payload.count || 0;
         state.error = null;
       })
       .addCase(getAllOrdersByUserId.rejected, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.error = action.payload;
         state.orders = [];
         state.orderCount = 0;
       })
       .addCase(getOrderDetails.pending, (state) => {
-        state.isloading = true;
+        state.isLoading = true;
         state.error = null;
       })
       .addCase(getOrderDetails.fulfilled, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.orderDetails = action.payload;
         state.error = null;
       })
       .addCase(getOrderDetails.rejected, (state, action) => {
-        state.isloading = false;
+        state.isLoading = false;
         state.error = action.payload;
       });
   },

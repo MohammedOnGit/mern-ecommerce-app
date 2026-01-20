@@ -1,222 +1,7 @@
-// const Cart = require("../../models/Cart");
-// const Product = require("../../models/Product");
-
-// /* Helper: map cart items */
-// const mapCartItems = (items = []) =>
-//   items.map((item) => {
-//     const p = item.productId || {};
-//     const image = p.image || (Array.isArray(p.images) ? p.images[0] : null);
-
-//     return {
-//       productId: p._id || null,
-//       image,
-//       title: p.title || "Product not found",
-//       price: p.price ?? null,
-//       salePrice: p.salePrice ?? null,
-//       quantity: item.quantity,
-//     };
-//   });
-
-// /* ------------------ ADD TO CART ------------------ */
-// const addToCart = async (req, res) => {
-//   try {
-//     const { userId, productId, quantity = 1 } = req.body;
-//     const qty = Number(quantity) || 1;
-
-//     if (!userId || !productId)
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "All fields required" });
-
-//     const product = await Product.findById(productId);
-//     if (!product)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Product not found" });
-
-//     let cart = await Cart.findOne({ userId });
-//     if (!cart) cart = new Cart({ userId, items: [] });
-
-//     const index = cart.items.findIndex(
-//       (item) => item.productId.toString() === productId
-//     );
-
-//     if (index > -1) cart.items[index].quantity += qty;
-//     else cart.items.push({ productId, quantity: qty });
-
-//     await cart.save();
-//     await cart.populate({
-//       path: "items.productId",
-//       select: "images image title price salePrice",
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Cart updated",
-//       data: { ...cart._doc, items: mapCartItems(cart.items) },
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server Error", error: error.message });
-//   }
-// };
-
-// /* ------------------ FETCH CART ITEMS ------------------ */
-// const fetchCartItems = async (req, res) => {
-//   try {
-//     const { userId } = req.params;
-
-//     if (!userId)
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "User ID required" });
-
-//     const cart = await Cart.findOne({ userId }).populate({
-//       path: "items.productId",
-//       select: "images image title price salePrice",
-//     });
-
-//     if (!cart)
-//       return res.status(200).json({
-//         success: true,
-//         data: { userId, items: [] },
-//       });
-
-//     const validItems = cart.items.filter((item) => item.productId);
-//     if (validItems.length < cart.items.length) {
-//       cart.items = validItems;
-//       await cart.save();
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       data: { ...cart._doc, items: mapCartItems(cart.items) },
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server Error", error: error.message });
-//   }
-// };
-
-// /* ------------------ UPDATE CART ITEM QUANTITY ------------------ */
-// const updateCartItemQty = async (req, res) => {
-//   try {
-//     const { userId, productId, quantity } = req.body;
-
-//     if (!userId || !productId || quantity === undefined)
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "All fields required" });
-
-//     const qty = Number(quantity);
-//     if (Number.isNaN(qty) || qty < 0)
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Invalid quantity" });
-
-//     const cart = await Cart.findOne({ userId });
-//     if (!cart)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Cart not found" });
-
-//     const index = cart.items.findIndex(
-//       (item) => item.productId.toString() === productId
-//     );
-
-//     if (index === -1)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Product not in cart" });
-
-//     if (qty === 0) cart.items.splice(index, 1);
-//     else cart.items[index].quantity = qty;
-
-//     await cart.save();
-//     await cart.populate({
-//       path: "items.productId",
-//       select: "images image title price salePrice",
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Cart updated",
-//       data: { ...cart._doc, items: mapCartItems(cart.items) },
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server Error", error: error.message });
-//   }
-// };
-
-// /* ------------------ DELETE CART ITEM ------------------ */
-// const deleteCartItem = async (req, res) => {
-//   try {
-//     const { userId, productId } = req.params;
-
-//     if (!userId || !productId)
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Invalid data" });
-
-//     const cart = await Cart.findOne({ userId }).populate({
-//       path: "items.productId",
-//       select: "images image title price salePrice",
-//     });
-
-//     if (!cart)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Cart not found" });
-
-//     const beforeCount = cart.items.length;
-
-//     cart.items = cart.items.filter(
-//       (item) => item.productId?._id.toString() !== productId
-//     );
-
-//     if (cart.items.length === beforeCount)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Product not in cart" });
-
-//     await cart.save();
-//     await cart.populate({
-//       path: "items.productId",
-//       select: "images image title price salePrice",
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Cart item removed",
-//       data: { ...cart._doc, items: mapCartItems(cart.items) },
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server Error", error: error.message });
-//   }
-// };
-
-// module.exports = {
-//   addToCart,
-//   fetchCartItems,
-//   updateCartItemQty,
-//   deleteCartItem,
-// };
-
-
 const Cart = require("../../models/Cart");
 const Product = require("../../models/Product");
 
-/* Helper: map cart items */
+/* Helper: map cart items with stock info */
 const mapCartItems = (items = []) =>
   items.map((item) => {
     const p = item.productId || {};
@@ -229,18 +14,25 @@ const mapCartItems = (items = []) =>
       price: p.price ?? null,
       salePrice: p.salePrice ?? null,
       quantity: item.quantity,
+      // Stock information
       totalStock: p.totalStock || 0,
       reservedStock: p.reservedStock || 0,
       availableStock: p.availableStock || 0,
       isLowStock: (p.totalStock || 0) - (p.reservedStock || 0) <= (p.lowStockThreshold || 5),
       isOutOfStock: (p.totalStock || 0) <= 0,
       allowBackorders: p.allowBackorders || false,
-      isActive: p.isActive !== false
+      isActive: p.isActive !== false,
+      // Reservation tracking
+      stockReserved: item.stockReserved !== false,
+      reservationId: item.reservationId || null
     };
   });
 
-/* ------------------ ADD TO CART ------------------ */
+/* ------------------ ADD TO CART (ENHANCED) ------------------ */
 const addToCart = async (req, res) => {
+  let stockReserved = false;
+  let reservationTransaction = null;
+  
   try {
     const { userId, productId, quantity = 1 } = req.body;
     const qty = Number(quantity) || 1;
@@ -255,7 +47,7 @@ const addToCart = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Quantity must be greater than 0" });
 
-    // Check stock availability
+    // STEP 1: CHECK STOCK AVAILABILITY
     const stockCheck = await Product.checkStockAvailability(productId, qty);
     
     if (!stockCheck.available && !stockCheck.allowBackorders) {
@@ -268,17 +60,20 @@ const addToCart = async (req, res) => {
       });
     }
 
-    // For backorder items, we still allow adding to cart but with a warning
-    if (stockCheck.allowBackorders && stockCheck.availableStock < qty) {
-      console.log(`⚠️ Backorder item added to cart: ${productId}, Requested: ${qty}, Available: ${stockCheck.availableStock}`);
-    }
-
-    // Reserve stock if available (for non-backorder items with stock)
+    // STEP 2: RESERVE STOCK (for non-backorder items with available stock)
     if (!stockCheck.allowBackorders && stockCheck.availableStock >= qty) {
       try {
         await Product.reserveStock(productId, qty);
+        stockReserved = true;
+        reservationTransaction = {
+          productId,
+          quantity: qty,
+          reservedAt: new Date()
+        };
+        
+        console.log(`✅ Stock reserved for cart: ${productId}, Qty: ${qty}`);
       } catch (reserveError) {
-        console.error('Stock reservation failed:', reserveError);
+        console.error('❌ Stock reservation failed:', reserveError);
         return res.status(400).json({
           success: false,
           message: 'Failed to reserve stock. Please try again.',
@@ -288,7 +83,7 @@ const addToCart = async (req, res) => {
       }
     }
 
-    // Add to cart
+    // STEP 3: ADD TO CART
     let cart = await Cart.findOne({ userId });
     if (!cart) cart = new Cart({ userId, items: [] });
 
@@ -296,20 +91,35 @@ const addToCart = async (req, res) => {
       (item) => item.productId.toString() === productId
     );
 
+    // Generate unique reservation ID for tracking
+    const reservationId = `RES_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     if (index > -1) {
+      // Update existing item
       cart.items[index].quantity += qty;
+      cart.items[index].stockReserved = stockReserved;
+      cart.items[index].reservationId = reservationId;
+      cart.items[index].lastReservedAt = new Date();
     } else {
-      cart.items.push({ productId, quantity: qty });
+      // Add new item
+      cart.items.push({
+        productId, 
+        quantity: qty,
+        stockReserved: stockReserved,
+        reservationId: reservationId,
+        lastReservedAt: new Date()
+      });
     }
 
     await cart.save();
+    
+    // Populate product details
     await cart.populate({
       path: "items.productId",
       select: "images image title price salePrice totalStock reservedStock availableStock lowStockThreshold allowBackorders isActive"
     });
 
     const cartResponse = mapCartItems(cart.items);
-    const addedItem = cartResponse.find(item => item.productId === productId);
 
     return res.status(200).json({
       success: true,
@@ -325,19 +135,22 @@ const addToCart = async (req, res) => {
         isLowStock: stockCheck.isLowStock,
         allowBackorders: stockCheck.allowBackorders,
         isBackorder: stockCheck.allowBackorders && stockCheck.availableStock < qty,
-        productId: productId
+        productId: productId,
+        stockReserved: stockReserved,
+        reservationId: reservationId
       }
     });
-  } catch (error) {
-    console.error('Add to cart error:', error);
     
-    // If we reserved stock but failed to add to cart, release it
-    if (error.message.includes('reserve')) {
+  } catch (error) {
+    console.error('❌ Add to cart error:', error);
+    
+    // STEP 4: ROLLBACK STOCK RESERVATION IF CART SAVE FAILED
+    if (stockReserved && reservationTransaction) {
       try {
-        const { productId, quantity = 1 } = req.body;
-        await Product.releaseStock(productId, Number(quantity) || 1);
-      } catch (releaseError) {
-        console.error('Failed to release stock after cart error:', releaseError);
+        console.log(`🔄 Rolling back stock reservation for ${reservationTransaction.productId}`);
+        await Product.releaseStock(reservationTransaction.productId, reservationTransaction.quantity);
+      } catch (rollbackError) {
+        console.error('❌ Failed to rollback stock reservation:', rollbackError);
       }
     }
     
@@ -345,14 +158,14 @@ const addToCart = async (req, res) => {
       .status(500)
       .json({ 
         success: false, 
-        message: "Server Error", 
+        message: "Failed to add item to cart", 
         error: process.env.NODE_ENV === 'development' ? error.message : undefined,
         productId: req.body.productId
       });
   }
 };
 
-/* ------------------ FETCH CART ITEMS ------------------ */
+/* ------------------ FETCH CART ITEMS (ENHANCED) ------------------ */
 const fetchCartItems = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -378,18 +191,17 @@ const fetchCartItems = async (req, res) => {
       if (!item.productId) return false;
       
       const product = item.productId;
-      const availableStock = product.totalStock - product.reservedStock;
-      const maxAllowed = product.allowBackorders ? item.quantity : Math.min(item.quantity, availableStock);
       
-      // Update quantity if it exceeds available stock (for non-backorder items)
-      if (!product.allowBackorders && item.quantity > availableStock) {
-        item.quantity = Math.max(0, availableStock);
+      // Check if product is active
+      if (product.isActive === false) {
+        console.log(`Removing inactive product from cart: ${product._id}`);
+        return false;
       }
       
-      return product.isActive !== false && item.quantity > 0;
+      return true;
     });
     
-    // If items were cleaned up, save the cart
+    // If items were removed, save the cart
     if (validItems.length !== cart.items.length) {
       cart.items = validItems;
       await cart.save();
@@ -397,7 +209,7 @@ const fetchCartItems = async (req, res) => {
 
     const cartResponse = mapCartItems(validItems);
     
-    // Check stock for all items
+    // Check current stock for all items
     const stockChecks = await Promise.all(
       validItems.map(async (item) => {
         try {
@@ -405,9 +217,20 @@ const fetchCartItems = async (req, res) => {
             item.productId._id.toString(),
             item.quantity
           );
+          
+          // If stock is no longer available and item was reserved, update cart
+          if (item.stockReserved && !stockCheck.available && !stockCheck.allowBackorders) {
+            console.log(`⚠️ Previously reserved item now out of stock: ${item.productId._id}`);
+            item.stockReserved = false;
+          }
+          
           return {
             productId: item.productId._id.toString(),
-            ...stockCheck
+            available: stockCheck.available,
+            availableStock: stockCheck.availableStock,
+            allowBackorders: stockCheck.allowBackorders,
+            isLowStock: stockCheck.isLowStock,
+            isActive: stockCheck.isActive
           };
         } catch (error) {
           return {
@@ -419,31 +242,41 @@ const fetchCartItems = async (req, res) => {
       })
     );
 
+    // Save any updates to stockReserved status
+    if (cart.isModified('items')) {
+      await cart.save();
+    }
+
     return res.status(200).json({
       success: true,
       data: { ...cart._doc, items: cartResponse },
       stockSummary: {
         totalItems: validItems.reduce((sum, item) => sum + item.quantity, 0),
         itemsWithStockIssues: stockChecks.filter(check => !check.available && !check.allowBackorders).length,
-        backorderItems: stockChecks.filter(check => check.allowBackorders && check.availableStock < check.requestedQuantity).length,
-        lowStockItems: stockChecks.filter(check => check.isLowStock).length
+        backorderItems: stockChecks.filter(check => check.allowBackorders && check.availableStock < 1).length,
+        lowStockItems: stockChecks.filter(check => check.isLowStock).length,
+        reservedItems: validItems.filter(item => item.stockReserved).length
       },
       stockChecks
     });
   } catch (error) {
-    console.error('Fetch cart items error:', error);
+    console.error('❌ Fetch cart items error:', error);
     return res
       .status(500)
       .json({ 
         success: false, 
-        message: "Server Error", 
+        message: "Failed to fetch cart items", 
         error: process.env.NODE_ENV === 'development' ? error.message : undefined 
       });
   }
 };
 
-/* ------------------ UPDATE CART ITEM QUANTITY ------------------ */
+/* ------------------ UPDATE CART ITEM QUANTITY (ENHANCED) ------------------ */
 const updateCartItemQty = async (req, res) => {
+  let stockChanged = false;
+  let reservedAmount = 0;
+  let releasedAmount = 0;
+  
   try {
     const { userId, productId, quantity } = req.body;
 
@@ -452,8 +285,8 @@ const updateCartItemQty = async (req, res) => {
         .status(400)
         .json({ success: false, message: "All fields required" });
 
-    const qty = Number(quantity);
-    if (Number.isNaN(qty) || qty < 0)
+    const newQty = Number(quantity);
+    if (Number.isNaN(newQty) || newQty < 0)
       return res
         .status(400)
         .json({ success: false, message: "Invalid quantity" });
@@ -479,10 +312,11 @@ const updateCartItemQty = async (req, res) => {
 
     const currentItem = cart.items[index];
     const product = currentItem.productId;
-    const quantityChange = qty - currentItem.quantity;
+    const quantityChange = newQty - currentItem.quantity;
 
-    // Check stock if increasing quantity
+    // Handle quantity changes
     if (quantityChange > 0) {
+      // Increasing quantity - check and reserve additional stock
       const stockCheck = await Product.checkStockAvailability(productId, quantityChange);
       
       if (!stockCheck.available && !stockCheck.allowBackorders) {
@@ -496,10 +330,19 @@ const updateCartItemQty = async (req, res) => {
         });
       }
 
-      // Reserve additional stock if available
+      // Reserve additional stock if available (non-backorder items)
       if (!stockCheck.allowBackorders && stockCheck.availableStock >= quantityChange) {
         try {
           await Product.reserveStock(productId, quantityChange);
+          stockChanged = true;
+          reservedAmount = quantityChange;
+          
+          // Update item reservation status
+          currentItem.stockReserved = true;
+          currentItem.reservationId = currentItem.reservationId || `RES_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          currentItem.lastReservedAt = new Date();
+          
+          console.log(`✅ Additional stock reserved: ${productId}, Qty: ${quantityChange}`);
         } catch (reserveError) {
           return res.status(400).json({
             success: false,
@@ -509,31 +352,35 @@ const updateCartItemQty = async (req, res) => {
           });
         }
       }
-    }
-    
-    // Release stock if decreasing quantity
-    if (quantityChange < 0 && !product.allowBackorders) {
+    } else if (quantityChange < 0 && currentItem.stockReserved) {
+      // Decreasing quantity - release excess reserved stock
       const releaseAmount = Math.abs(quantityChange);
       try {
         await Product.releaseStock(productId, releaseAmount);
+        stockChanged = true;
+        releasedAmount = releaseAmount;
+        
+        console.log(`🔄 Released excess stock: ${productId}, Qty: ${releaseAmount}`);
       } catch (releaseError) {
-        console.error('Failed to release stock:', releaseError);
+        console.error('❌ Failed to release stock:', releaseError);
         // Continue anyway, don't fail the update
       }
     }
 
-    if (qty === 0) {
-      // Release all reserved stock for this item
-      if (!product.allowBackorders) {
+    // Update or remove item
+    if (newQty === 0) {
+      // Remove item - release all reserved stock
+      if (currentItem.stockReserved) {
         try {
           await Product.releaseStock(productId, currentItem.quantity);
+          console.log(`🔄 Released all stock on removal: ${productId}, Qty: ${currentItem.quantity}`);
         } catch (releaseError) {
-          console.error('Failed to release stock on removal:', releaseError);
+          console.error('❌ Failed to release stock on removal:', releaseError);
         }
       }
       cart.items.splice(index, 1);
     } else {
-      cart.items[index].quantity = qty;
+      cart.items[index].quantity = newQty;
     }
 
     await cart.save();
@@ -549,25 +396,41 @@ const updateCartItemQty = async (req, res) => {
       message: "Cart updated",
       data: { ...cart._doc, items: cartResponse },
       stockChange: {
-        reserved: quantityChange > 0 ? quantityChange : 0,
-        released: quantityChange < 0 ? Math.abs(quantityChange) : 0,
-        productId: productId
+        reserved: reservedAmount,
+        released: releasedAmount,
+        productId: productId,
+        newStockReserved: cart.items[index]?.stockReserved || false
       }
     });
+    
   } catch (error) {
-    console.error('Update cart quantity error:', error);
+    console.error('❌ Update cart quantity error:', error);
+    
+    // Rollback stock changes if cart update failed
+    if (stockChanged) {
+      try {
+        if (reservedAmount > 0) {
+          await Product.releaseStock(productId, reservedAmount);
+          console.log(`🔄 Rolled back reserved stock: ${productId}, Qty: ${reservedAmount}`);
+        }
+        // Note: We don't rollback releases - that would be incorrect
+      } catch (rollbackError) {
+        console.error('❌ Failed to rollback stock changes:', rollbackError);
+      }
+    }
+    
     return res
       .status(500)
       .json({ 
         success: false, 
-        message: "Server Error", 
+        message: "Failed to update cart", 
         error: process.env.NODE_ENV === 'development' ? error.message : undefined,
         productId: req.body.productId
       });
   }
 };
 
-/* ------------------ DELETE CART ITEM ------------------ */
+/* ------------------ DELETE CART ITEM (ENHANCED) ------------------ */
 const deleteCartItem = async (req, res) => {
   try {
     const { userId, productId } = req.params;
@@ -599,11 +462,12 @@ const deleteCartItem = async (req, res) => {
     const itemToRemove = cart.items[index];
     
     // Release reserved stock for this item
-    if (itemToRemove.productId && !itemToRemove.productId.allowBackorders) {
+    if (itemToRemove.stockReserved && itemToRemove.productId && !itemToRemove.productId.allowBackorders) {
       try {
         await Product.releaseStock(productId, itemToRemove.quantity);
+        console.log(`🔄 Released stock on delete: ${productId}, Qty: ${itemToRemove.quantity}`);
       } catch (releaseError) {
-        console.error('Failed to release stock on delete:', releaseError);
+        console.error('❌ Failed to release stock on delete:', releaseError);
         // Continue with deletion even if release fails
       }
     }
@@ -623,22 +487,23 @@ const deleteCartItem = async (req, res) => {
       message: "Cart item removed",
       data: { ...cart._doc, items: cartResponse },
       stockReleased: itemToRemove.quantity,
-      productId: productId
+      productId: productId,
+      wasReserved: itemToRemove.stockReserved || false
     });
   } catch (error) {
-    console.error('Delete cart item error:', error);
+    console.error('❌ Delete cart item error:', error);
     return res
       .status(500)
       .json({ 
         success: false, 
-        message: "Server Error", 
+        message: "Failed to remove item from cart", 
         error: process.env.NODE_ENV === 'development' ? error.message : undefined,
         productId: req.params.productId
       });
   }
 };
 
-/* ------------------ CLEAR CART ------------------ */
+/* ------------------ CLEAR CART (ENHANCED) ------------------ */
 const clearCart = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -661,16 +526,29 @@ const clearCart = async (req, res) => {
 
     // Release all reserved stock
     const releasePromises = cart.items.map(async (item) => {
-      if (item.productId && !item.productId.allowBackorders) {
+      if (item.stockReserved && item.productId && !item.productId.allowBackorders) {
         try {
           await Product.releaseStock(item.productId._id.toString(), item.quantity);
-          return { productId: item.productId._id.toString(), released: item.quantity };
+          return { 
+            productId: item.productId._id.toString(), 
+            released: item.quantity,
+            wasReserved: true 
+          };
         } catch (releaseError) {
-          console.error(`Failed to release stock for product ${item.productId._id}:`, releaseError);
-          return { productId: item.productId._id.toString(), released: 0, error: releaseError.message };
+          console.error(`❌ Failed to release stock for product ${item.productId._id}:`, releaseError);
+          return { 
+            productId: item.productId._id.toString(), 
+            released: 0, 
+            error: releaseError.message,
+            wasReserved: true 
+          };
         }
       }
-      return null;
+      return { 
+        productId: item.productId?._id.toString(), 
+        released: 0,
+        wasReserved: item.stockReserved || false 
+      };
     });
 
     const releaseResults = await Promise.all(releasePromises);
@@ -686,16 +564,17 @@ const clearCart = async (req, res) => {
       data: { userId, items: [] },
       stockReleased: {
         total: totalReleased,
+        reservedItemsCleared: releaseResults.filter(r => r?.wasReserved).length,
         details: releaseResults.filter(r => r !== null)
       }
     });
   } catch (error) {
-    console.error('Clear cart error:', error);
+    console.error('❌ Clear cart error:', error);
     return res
       .status(500)
       .json({ 
         success: false, 
-        message: "Server Error", 
+        message: "Failed to clear cart", 
         error: process.env.NODE_ENV === 'development' ? error.message : undefined 
       });
   }

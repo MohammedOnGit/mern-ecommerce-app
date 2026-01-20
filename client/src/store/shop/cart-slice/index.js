@@ -9,7 +9,15 @@ const initialState = {
   error: null,
   cartCount: 0,
   subtotal: 0,
-  lastUpdated: null
+  lastUpdated: null,
+  // ADDED: Stock reservation summary
+  stockSummary: {
+    totalItems: 0,
+    reservedItems: 0,
+    backorderItems: 0,
+    lowStockItems: 0,
+    itemsWithStockIssues: 0
+  }
 };
 
 // Helper function to check stock before adding to cart
@@ -90,29 +98,39 @@ export const fetchCartItems = createAsyncThunk(
       );
       
       if (response.data.success) {
+        // Extract stock summary from response
+        const stockSummary = response.data.stockSummary || {
+          totalItems: 0,
+          reservedItems: 0,
+          backorderItems: 0,
+          lowStockItems: 0,
+          itemsWithStockIssues: 0
+        };
+        
         // Validate stock for each item in cart
         const validatedItems = [];
         for (const item of response.data.data?.items || []) {
           if (item.productId) {
             const stockCheck = await checkProductStock(item.productId, item.quantity);
-            if (stockCheck.available) {
+            if (stockCheck.available || item.allowBackorders) {
               validatedItems.push(item);
             } else {
-              console.warn(`Item ${item.productId} removed from cart: ${stockCheck.reason}`);
+              console.warn(`Item ${item.productId} has stock issues: ${stockCheck.reason}`);
             }
           }
         }
         
         return {
           ...response.data.data,
-          items: validatedItems
+          items: validatedItems,
+          stockSummary
         };
       } else {
         return rejectWithValue(response.data.message || "Failed to fetch cart");
       }
     } catch (error) {
       if (error.response?.status === 401) {
-        return { items: [], cartCount: 0, subtotal: 0 };
+        return { items: [], cartCount: 0, subtotal: 0, stockSummary: initialState.stockSummary };
       }
       return rejectWithValue(error.response?.data?.message || "Failed to fetch cart");
     }
@@ -126,7 +144,7 @@ export const addToCart = createAsyncThunk(
       // STEP 1: CHECK STOCK BEFORE ADDING
       const stockCheck = await checkProductStock(productId, quantity);
       
-      if (!stockCheck.available) {
+      if (!stockCheck.available && !stockCheck.allowBackorders) {
         return rejectWithValue({
           message: stockCheck.reason,
           availableStock: stockCheck.availableStock,
@@ -147,12 +165,17 @@ export const addToCart = createAsyncThunk(
       );
       
       if (response.data.success) {
-        return response.data.data;
+        return {
+          ...response.data.data,
+          stockInfo: response.data.stockInfo,
+          message: response.data.message
+        };
       } else {
         // If backend fails, check if it's a stock issue
         if (response.data.message?.includes('stock') || response.data.message?.includes('Stock')) {
           return rejectWithValue({
             message: response.data.message,
+            availableStock: response.data.availableStock,
             productId
           });
         }
@@ -168,7 +191,7 @@ export const addToCart = createAsyncThunk(
         const availableStock = product.availableStock || product.totalStock || 0;
         const currentCartQty = state.cart.items.find(i => i.productId === productId)?.quantity || 0;
         
-        if (availableStock < (currentCartQty + quantity)) {
+        if (availableStock < (currentCartQty + quantity) && !product.allowBackorders) {
           return rejectWithValue({
             message: `Only ${availableStock} item(s) available`,
             availableStock,
@@ -177,24 +200,32 @@ export const addToCart = createAsyncThunk(
         }
         
         // Return optimistic data
+        const newItem = {
+          productId: productId,
+          image: product.image || '',
+          title: product.title || 'Product',
+          price: product.price || 0,
+          salePrice: product.salePrice,
+          quantity: quantity,
+          _id: `temp-${Date.now()}`,
+          stockReserved: false,
+          allowBackorders: product.allowBackorders || false
+        };
+        
+        const updatedItems = [...state.cart.items, newItem];
+        
         return {
-          items: [...state.cart.items, {
-            productId: productId,
-            image: product.image || '',
-            title: product.title || 'Product',
-            price: product.price || 0,
-            salePrice: product.salePrice,
-            quantity: quantity,
-            _id: `temp-${Date.now()}`
-          }],
+          items: updatedItems,
           cartCount: state.cart.cartCount + quantity,
-          subtotal: state.cart.subtotal + (product.salePrice || product.price || 0) * quantity
+          subtotal: state.cart.subtotal + (product.salePrice || product.price || 0) * quantity,
+          message: "Added to cart (offline mode)"
         };
       }
       
       if (error.response?.data?.message?.includes('stock')) {
         return rejectWithValue({
           message: error.response.data.message,
+          availableStock: error.response.data.availableStock,
           productId
         });
       }
@@ -210,7 +241,6 @@ export const updateCartQuantity = createAsyncThunk(
     try {
       const token = localStorage.getItem('token');
       
-      // Direct API call - let backend handle stock validation
       const response = await axios.put(
         `${API_BASE_URL}/shop/cart/update`,
         { userId, productId, quantity },
@@ -222,9 +252,11 @@ export const updateCartQuantity = createAsyncThunk(
       );
       
       if (response.data.success) {
-        return response.data.data;
+        return {
+          ...response.data.data,
+          stockChange: response.data.stockChange
+        };
       } else {
-        // IMPROVED ERROR HANDLING: Better parsing of backend errors
         const errorData = response.data;
         
         if (errorData.message?.includes('stock') || 
@@ -249,7 +281,6 @@ export const updateCartQuantity = createAsyncThunk(
         });
       }
     } catch (error) {
-      // IMPROVED NETWORK ERROR HANDLING
       console.error('Update cart quantity network error:', error);
       
       if (error.response?.data) {
@@ -289,7 +320,12 @@ export const deleteCartItem = createAsyncThunk(
       );
       
       if (response.data.success) {
-        return { productId, ...response.data.data };
+        return { 
+          productId, 
+          ...response.data.data,
+          wasReserved: response.data.wasReserved,
+          stockReleased: response.data.stockReleased
+        };
       } else {
         return rejectWithValue(response.data.message || "Failed to delete item");
       }
@@ -322,6 +358,7 @@ const cartSlice = createSlice({
       state.cartCount = 0;
       state.subtotal = 0;
       state.error = null;
+      state.stockSummary = initialState.stockSummary;
       state.lastUpdated = new Date().toISOString();
     },
     updateCartCount: (state, action) => {
@@ -333,9 +370,15 @@ const cartSlice = createSlice({
     clearCartError: (state) => {
       state.error = null;
     },
-    // New action to handle stock validation errors
     setCartStockError: (state, action) => {
       state.error = action.payload;
+    },
+    // ADDED: Update stock summary
+    updateStockSummary: (state, action) => {
+      state.stockSummary = {
+        ...state.stockSummary,
+        ...action.payload
+      };
     }
   },
   extraReducers: (builder) => {
@@ -352,6 +395,7 @@ const cartSlice = createSlice({
           const price = item.salePrice || item.price || 0;
           return sum + (price * item.quantity);
         }, 0);
+        state.stockSummary = action.payload.stockSummary || initialState.stockSummary;
         state.lastUpdated = new Date().toISOString();
         state.error = null;
       })
@@ -372,6 +416,20 @@ const cartSlice = createSlice({
           const price = item.salePrice || item.price || 0;
           return sum + (price * item.quantity);
         }, 0);
+        
+        // Update stock summary if available
+        if (action.payload.stockInfo) {
+          const newReservedCount = action.payload.stockInfo.stockReserved ? 1 : 0;
+          const newBackorderCount = action.payload.stockInfo.isBackorder ? 1 : 0;
+          
+          state.stockSummary = {
+            ...state.stockSummary,
+            reservedItems: state.stockSummary.reservedItems + newReservedCount,
+            backorderItems: state.stockSummary.backorderItems + newBackorderCount,
+            totalItems: state.stockSummary.totalItems + 1
+          };
+        }
+        
         state.lastUpdated = new Date().toISOString();
         state.error = null;
       })
@@ -418,6 +476,12 @@ const cartSlice = createSlice({
             return sum + (price * item.quantity);
           }, 0);
         }
+        
+        // Update stock summary when item is removed
+        if (action.payload.wasReserved) {
+          state.stockSummary.reservedItems = Math.max(0, state.stockSummary.reservedItems - 1);
+        }
+        
         state.lastUpdated = new Date().toISOString();
         state.error = null;
       })
@@ -433,7 +497,8 @@ export const {
   updateCartCount, 
   updateCartSubtotal,
   clearCartError,
-  setCartStockError
+  setCartStockError,
+  updateStockSummary
 } = cartSlice.actions;
 
 export default cartSlice.reducer;
