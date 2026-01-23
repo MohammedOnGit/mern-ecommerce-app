@@ -1,4 +1,3 @@
-// src/pages/shop/search-page.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";

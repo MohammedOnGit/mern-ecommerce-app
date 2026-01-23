@@ -7,9 +7,6 @@ const {
 } = require("../../controllers/shop/product-controller");
 
 
-// ✅ GET ALL PRODUCTS
-// router.get("/all", getFilteredProducts);
-
 router.get("/get", getFilteredProducts);
 
 router.get("/get/:productId", getProductDetails);

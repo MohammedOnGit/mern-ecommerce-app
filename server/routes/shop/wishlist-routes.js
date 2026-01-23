@@ -6,9 +6,7 @@ const Cart = require("../../models/Cart");
 // Import from your existing auth controller
 const { authMiddleware } = require("../../controllers/auth/auth-controller");
 
-// @route   GET /api/shop/wishlist
-// @desc    Get user's wishlist
-// @access  Private
+
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const wishlist = await Wishlist.findOne({ user: req.user.id })
@@ -359,9 +357,7 @@ router.post("/check", authMiddleware, async (req, res) => {
   }
 });
 
-// @route   DELETE /api/shop/wishlist/clear
-// @desc    Clear entire wishlist
-// @access  Private
+
 router.delete("/clear", authMiddleware, async (req, res) => {
   try {
     const wishlist = await Wishlist.findOne({ user: req.user.id });

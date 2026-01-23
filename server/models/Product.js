@@ -8,10 +8,21 @@ const productSchema = new mongoose.Schema({
   image: String,
   category: String,
   brand: String,
-  rating: { type: Number, default: 0 },
-  reviews: { type: Number, default: 0 },
   
-  // ✅ UPDATED: Enhanced stock management fields
+  // ✅ UPDATED: Review rating fields (renamed from 'rating' and 'reviews')
+  averageReview: { 
+    type: Number, 
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  reviewCount: { 
+    type: Number, 
+    default: 0,
+    min: 0
+  },
+  
+  // ✅ KEPT: Enhanced stock management fields
   totalStock: {
     type: Number,
     required: true,
@@ -71,7 +82,7 @@ productSchema.pre('save', function(next) {
   next();
 });
 
-// ✅ NEW: Method to check stock availability
+// ✅ KEPT: Method to check stock availability
 productSchema.methods.checkStockAvailability = function(requestedQuantity = 1) {
   const availableStock = this.availableStock || Math.max(0, this.totalStock - this.reservedStock);
   const isLowStock = availableStock > 0 && availableStock <= this.lowStockThreshold;
@@ -84,11 +95,13 @@ productSchema.methods.checkStockAvailability = function(requestedQuantity = 1) {
     allowBackorders: this.allowBackorders,
     isLowStock: isLowStock,
     isActive: this.isActive,
-    showOutOfStock: this.showOutOfStock
+    showOutOfStock: this.showOutOfStock,
+    averageReview: this.averageReview,
+    reviewCount: this.reviewCount
   };
 };
 
-// ✅ NEW: Static method to check stock availability by product ID
+// ✅ KEPT: Static method to check stock availability by product ID
 productSchema.statics.checkStockAvailability = async function(productId, requestedQuantity = 1) {
   const product = await this.findById(productId);
   
@@ -117,12 +130,14 @@ productSchema.statics.checkStockAvailability = async function(productId, request
     isLowStock: isLowStock,
     isActive: product.isActive,
     showOutOfStock: product.showOutOfStock,
+    averageReview: product.averageReview,
+    reviewCount: product.reviewCount,
     productId: productId,
     product: product
   };
 };
 
-// ✅ NEW: Method to reserve stock (when added to cart)
+// ✅ KEPT: Method to reserve stock (when added to cart)
 productSchema.methods.reserveStock = async function(quantity) {
   if (quantity <= 0) {
     throw new Error('Quantity must be greater than 0');
@@ -141,7 +156,7 @@ productSchema.methods.reserveStock = async function(quantity) {
   return this;
 };
 
-// ✅ NEW: Static method to reserve stock by product ID
+// ✅ KEPT: Static method to reserve stock by product ID
 productSchema.statics.reserveStock = async function(productId, quantity) {
   const product = await this.findById(productId);
   
@@ -152,7 +167,7 @@ productSchema.statics.reserveStock = async function(productId, quantity) {
   return await product.reserveStock(quantity);
 };
 
-// ✅ NEW: Method to release stock (when removed from cart or order cancelled)
+// ✅ KEPT: Method to release stock (when removed from cart or order cancelled)
 productSchema.methods.releaseStock = async function(quantity) {
   if (quantity <= 0) {
     throw new Error('Quantity must be greater than 0');
@@ -171,7 +186,7 @@ productSchema.methods.releaseStock = async function(quantity) {
   return this;
 };
 
-// ✅ NEW: Static method to release stock by product ID
+// ✅ KEPT: Static method to release stock by product ID
 productSchema.statics.releaseStock = async function(productId, quantity) {
   const product = await this.findById(productId);
   
@@ -182,7 +197,7 @@ productSchema.statics.releaseStock = async function(productId, quantity) {
   return await product.releaseStock(quantity);
 };
 
-// ✅ NEW: Method to deduct stock (when order is confirmed)
+// ✅ KEPT: Method to deduct stock (when order is confirmed)
 productSchema.methods.deductStock = async function(quantity) {
   if (quantity <= 0) {
     throw new Error('Quantity must be greater than 0');
@@ -212,7 +227,7 @@ productSchema.methods.deductStock = async function(quantity) {
   return this;
 };
 
-// ✅ NEW: Static method to deduct stock by product ID
+// ✅ KEPT: Static method to deduct stock by product ID
 productSchema.statics.deductStock = async function(productId, quantity) {
   const product = await this.findById(productId);
   
@@ -221,6 +236,38 @@ productSchema.statics.deductStock = async function(productId, quantity) {
   }
   
   return await product.deductStock(quantity);
+};
+
+// ✅ NEW: Method to update average rating (used in review controller)
+productSchema.methods.updateRating = async function() {
+  // This method should be called after reviews are added/removed
+  const ProductReview = require('./product-review-model');
+  const reviews = await ProductReview.find({ productId: this._id.toString() });
+  
+  const totalReviews = reviews.length;
+  if (totalReviews === 0) {
+    this.averageReview = 0;
+    this.reviewCount = 0;
+  } else {
+    const totalRating = reviews.reduce((sum, review) => sum + review.reviewValue, 0);
+    this.averageReview = Number((totalRating / totalReviews).toFixed(1));
+
+    this.reviewCount = totalReviews;
+  }
+  
+  await this.save();
+  return this;
+};
+
+// ✅ NEW: Static method to update rating by product ID
+productSchema.statics.updateRating = async function(productId) {
+  const product = await this.findById(productId);
+  
+  if (!product) {
+    throw new Error('Product not found');
+  }
+  
+  return await product.updateRating();
 };
 
 // ✅ KEPT: Method to check if product can be added to cart (backward compatibility)
@@ -248,7 +295,7 @@ productSchema.methods.increaseStock = async function(quantity) {
   return this;
 };
 
-// ✅ NEW: Static method to increase stock by product ID
+// ✅ KEPT: Static method to increase stock by product ID
 productSchema.statics.increaseStock = async function(productId, quantity) {
   const product = await this.findById(productId);
   
